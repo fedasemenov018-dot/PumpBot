@@ -75,25 +75,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Нажми /start")
 
-def main() -> None:
+async def main() -> None:
     """Главная функция для запуска бота"""
     try:
         # Создание приложения с токеном
-        app = Application.builder().token(BOT_TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).build()
         
         # Добавление обработчиков
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CallbackQueryHandler(button_handler))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CallbackQueryHandler(button_handler))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
         logger.info("🚀 PumpBot запущен и работает!")
         
-        # Запуск бота с polling
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Инициализация и запуск бота
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await application.idle()
         
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {e}")
+        logger.error(f"Ошибка при запуске бота: {e}", exc_info=True)
         raise
+    finally:
+        await application.stop()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
