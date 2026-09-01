@@ -11,11 +11,16 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 user_data = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /start"""
     user = update.effective_user
     keyboard = [
         [InlineKeyboardButton("🏋️ Записать тренировку", callback_data="log")],
@@ -29,6 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатия кнопок"""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -45,31 +51,55 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[query.from_user.id] = {"step": "tip"}
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений"""
     user_id = update.effective_user.id
     text = update.message.text
     
     if user_id in user_data and user_data[user_id].get("step") == "log":
         parts = text.split()
-        if len(parts) == 3:
-            exercise, weight, reps = parts
-            await update.message.reply_text(f"✅ Записано: {exercise}, {weight}кг, {reps} раз\nПродолжай в том же духе! 💪")
+        if len(parts) >= 3:
+            exercise = parts[0]
+            weight = parts[1]
+            reps = parts[2]
+            await update.message.reply_text(
+                f"✅ Записано: {exercise}, {weight}кг, {reps} раз\nПродолжай в том же духе! 💪"
+            )
             del user_data[user_id]
         else:
             await update.message.reply_text("Введи в формате: Упражнение Вес Повторения")
     elif user_id in user_data and user_data[user_id].get("step") == "tip":
-        await update.message.reply_text(f"🤖 Совет по {text}: держи спину прямо и дыши правильно! 💪")
+        await update.message.reply_text(
+            f"🤖 Совет по {text}: держи спину прямо и дыши правильно! 💪"
+        )
         del user_data[user_id]
     else:
         await update.message.reply_text("Нажми /start")
 
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+async def main() -> None:
+    """Главная функция для запуска бота"""
+    # Создание приложения с токеном
+    application = Application.builder().token(BOT_TOKEN).build()
     
-    print("🚀 PumpBot запущен и работает!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Добавление обработчиков
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    logger.info("🚀 PumpBot запущен и работает!")
+    
+    # Запуск бота
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    
+    try:
+        # Бот работает
+        await application.idle()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        await application.stop()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
