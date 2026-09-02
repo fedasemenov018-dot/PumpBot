@@ -2,6 +2,7 @@ import logging
 import os
 import sqlite3
 import random
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
@@ -258,7 +259,7 @@ async def handle_sets_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         goal = get_goal(user_id)
         goal_text = f"\n🎯 Не забудь про цель: {goal}" if goal else ""
         
-        message_text = f"✅ Записано, {user_name}!\n{context.user_data['exercise']}: {context.user_data['weight']}кг × {context.user_data['reps']} × {context.user_data['sets']} подходов\n\nПродолжай в том же духе! 💪{goal_text}"
+        message_text = f"✅ Записано, {user_name}!\n{context.user_data['exercise']}: {context.user_data['weight']}кг × {context.user_data['reps']} × {context.user_data['sets']} подходов{goal_text}\nПродолжай тренироваться! 💪"
         
         keyboard = [
             [InlineKeyboardButton("🔄 Ещё одно упражнение", callback_data="log")],
@@ -330,5 +331,4 @@ async def main():
     await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
