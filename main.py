@@ -1,5 +1,5 @@
 import os
-import asyncio
+import threading
 from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -14,14 +14,16 @@ print("🚀 Запуск PumpBot...")
 async def health_check(request):
     return web.Response(text="OK")
 
-async def start_http_server():
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.getenv('PORT', 10000)))
-    await site.start()
-    print(f"✅ HTTP-сервер запущен на порту {os.getenv('PORT', 10000)}")
+
+def _run_http_server_blocking():
+    try:
+        http_app = web.Application()
+        http_app.router.add_get('/', health_check)
+        # Отключаем установку signal handlers, чтобы можно было запускать в потоке
+        web.run_app(http_app, host='0.0.0.0', port=int(os.getenv('PORT', 10000)), handle_signals=False)
+    except Exception as e:
+        print(f"❌ Не удалось запустить HTTP-сервер: {e}")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -34,6 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -45,20 +48,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "plan":
         await query.edit_message_text("💪 План на сегодня:\n1. Приседания 3x10\n2. Отжимания 3x15")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("ℹ️ Используй кнопки меню или команду /start")
 
-async def main():
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
 
-    # Запускаем HTTP-сервер в том же asyncio-loop
-    asyncio.create_task(start_http_server())
+    # Запускаем HTTP-сервер в отдельном потоке — Render увидит открытый порт
+    try:
+        thread = threading.Thread(target=_run_http_server_blocking, daemon=True)
+        thread.start()
+        print("✅ HTTP-сервер запущен в отдельном потоке")
+    except Exception as e:
+        print(f"❌ Не удалось запустить HTTP-сервер в потоке: {e}")
 
     print("✅ PumpBot успешно запущен и слушает запросы!")
-    await app.run_polling()
+    # run_polling — синхронный метод, он сам управляет event loop
+    app.run_polling()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
