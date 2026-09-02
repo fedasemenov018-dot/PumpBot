@@ -118,6 +118,23 @@ def get_achievements(tg_id):
     conn.close()
     return achievements
 
+# === КАРТИНКИ И GIF ===
+GREETING_GIF = "https://media.giphy.com/media/3o7abKhOpu0N9HNGhO/giphy.gif"
+MOTIVATION_GIFS = [
+    "https://media.giphy.com/media/l0HlNQ3JjE1p1Qw5m/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif",
+    "https://media.giphy.com/media/l41lM3c3Q1yHr0fY4/giphy.gif",
+    "https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif"
+]
+WORKOUT_IMAGES = {
+    "приседания": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400",
+    "жим": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400",
+    "планка": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400",
+    "отжимания": "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=400",
+    "тяга": "https://images.unsplash.com/photo-1581009146145-b5f8f3f0f0f0?w=400"
+}
+DEFAULT_IMAGE = "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"
+
 # === МОТИВАЦИЯ ===
 QUOTES = [
     "Ты не просто качаешь мышцы — ты качаешь характер. — Арнольд Шварценеггер",
@@ -159,10 +176,15 @@ def get_ai_response(prompt):
                 "max_tokens": 500
             }
         )
-        return response.json()['choices'][0]['message']['content'].strip()
+        data = response.json()
+        if 'error' in data:
+            return f"Ошибка API: {data['error'].get('message', 'Неизвестная ошибка')}"
+        if 'choices' not in data or not data['choices']:
+            return "ИИ вернул пустой ответ. Попробуйте позже."
+        return data['choices'][0]['message']['content'].strip()
     except Exception as e:
         logging.error(f"AI Error: {e}")
-        return "Не удалось получить ответ от ИИ. Попробуйте позже."
+        return f"Не удалось получить ответ от ИИ. Ошибка: {str(e)}"
 
 # === БОТ ===
 user_data = {}
@@ -170,6 +192,10 @@ user_data = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
     user = get_user(tg_id)
+    
+    # Отправляем GIF-приветствие
+    await update.message.reply_animation(GREETING_GIF, caption="🔥 Добро пожаловать в PumpBot!")
+    
     if user:
         await show_main_menu(update, context, user)
     else:
@@ -251,7 +277,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "motivation":
-        await query.edit_message_text(f"🔥 {random.choice(QUOTES)}")
+        await show_motivation(query)
         return
 
     if data == "challenge":
@@ -283,10 +309,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "❓ **Помощь**\n\n"
             "🏋️ Записать тренировку — сохрани упражнение, вес, повторения и подходы.\n"
-            "📊 Статистика — показывает прогресс за неделю.\n"
+            "📊 Статистика — показывает прогресс за неделю с графиком.\n"
             "💪 План на сегодня — ИИ составит тренировку под твою цель.\n"
-            "🤖 Совет — спроси ИИ про технику упражнения.\n"
-            "🔥 Мотивация — случайная цитата чемпиона.\n"
+            "🤖 Совет — спроси ИИ про технику упражнения (с картинкой).\n"
+            "🔥 Мотивация — случайная цитата чемпиона + картинка.\n"
             "🎯 Челлендж — выполняй и становись сильнее.\n"
             "🏆 Мои достижения — все твои рекорды.\n"
             "🎯 Поставить цель — задай цель и бот будет напоминать.\n"
@@ -300,20 +326,30 @@ async def show_stats(query, tg_id):
         await query.edit_message_text("📊 У тебя пока нет тренировок. Запиши первую!")
         return
     
-    text = "📊 Твоя статистика за неделю:\n\n"
+    text = "📊 **Твоя статистика за неделю:**\n\n"
     exercises = {}
+    total_workouts = 0
+    
     for w in workouts:
         name = w[0]
         if name not in exercises:
-            exercises[name] = {"count": 0, "max_weight": 0}
+            exercises[name] = {"count": 0, "max_weight": 0, "total_weight": 0}
         exercises[name]["count"] += 1
+        exercises[name]["total_weight"] += w[1]
         if w[1] > exercises[name]["max_weight"]:
             exercises[name]["max_weight"] = w[1]
+        total_workouts += 1
+    
+    # Прогресс-бар
+    if total_workouts > 0:
+        progress = min(100, total_workouts * 10)
+        bar = "▓" * (progress // 10) + "░" * (10 - progress // 10)
+        text += f"🔥 **Прогресс:** {bar} {progress}%\n\n"
     
     for name, data in exercises.items():
-        text += f"🏋️ {name}: {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
+        text += f"🏋️ **{name}:** {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
     
-    await query.edit_message_text(text)
+    await query.edit_message_text(text, parse_mode='Markdown')
 
 async def show_achievements(query, tg_id):
     achievements = get_achievements(tg_id)
@@ -321,11 +357,11 @@ async def show_achievements(query, tg_id):
         await query.edit_message_text("🏆 У тебя пока нет достижений. Иди к рекордам! 💪")
         return
     
-    text = "🏆 Твои достижения:\n\n"
+    text = "🏆 **Твои достижения:**\n\n"
     for ex, max_w in achievements:
-        text += f"🏋️ {ex}: {max_w} кг (макс. вес)\n"
+        text += f"🏋️ **{ex}:** {max_w} кг (макс. вес)\n"
     
-    await query.edit_message_text(text)
+    await query.edit_message_text(text, parse_mode='Markdown')
 
 async def show_plan(query, tg_id):
     user = get_user(tg_id)
@@ -337,7 +373,13 @@ async def show_plan(query, tg_id):
     level = user[4]
     prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5 упражнений с подходами и повторениями."
     plan = get_ai_response(prompt)
-    await query.edit_message_text(f"💪 Твой план на сегодня:\n\n{plan}")
+    await query.edit_message_text(f"💪 **Твой план на сегодня:**\n\n{plan}", parse_mode='Markdown')
+
+async def show_motivation(query):
+    quote = random.choice(QUOTES)
+    gif = random.choice(MOTIVATION_GIFS)
+    await query.edit_message_text(f"🔥 {quote}")
+    await query.message.reply_animation(gif)
 
 async def share_progress(query, tg_id):
     workouts = get_stats(tg_id)
@@ -356,14 +398,14 @@ async def share_progress(query, tg_id):
             exercises[name]["max_weight"] = w[1]
     
     for name, data in exercises.items():
-        text += f"🏋️ {name}: {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
+        text += f"🏋️ **{name}:** {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
     
     text += "\n🔥 Продолжай качать железо! 💪"
     await query.edit_message_text(text, parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
-    text = update.message.text
+    text = update.message.text.lower()
 
     if tg_id not in user_data:
         await update.message.reply_text("Нажми /start")
@@ -403,16 +445,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reps = user_data[tg_id]["reps"]
             save_workout(tg_id, exercise, weight, reps, sets)
             del user_data[tg_id]
-            await update.message.reply_text(f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\nПродолжай в том же духе! 💪")
+            
+            # Отправляем мотивирующий GIF после тренировки
+            gif = random.choice(MOTIVATION_GIFS)
+            await update.message.reply_animation(
+                gif,
+                caption=f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\n\n🔥 Ты красавчик! Продолжай в том же духе! 💪"
+            )
             user = get_user(tg_id)
             await show_main_menu(update, context, user)
         except:
             await update.message.reply_text("Ошибка. Попробуй снова.")
 
     if step == "tip":
+        # Ищем картинку для упражнения
+        image_url = DEFAULT_IMAGE
+        for key in WORKOUT_IMAGES:
+            if key in text:
+                image_url = WORKOUT_IMAGES[key]
+                break
+        
         prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
         tip = get_ai_response(prompt)
-        await update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}")
+        await update.message.reply_photo(image_url, caption=f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
         del user_data[tg_id]
 
     if step == "set_target":
