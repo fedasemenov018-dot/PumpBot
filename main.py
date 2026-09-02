@@ -1,116 +1,378 @@
-import os
 import logging
-import requests
-import time
+import os
+import sqlite3
+import random
+import asyncio
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import telegram
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
+# === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
 if not BOT_TOKEN:
-    logging.error("❌ Ошибка: TELEGRAM_BOT_TOKEN не найден в переменных окружения")
-    exit(1)
+    raise ValueError("TELEGRAM_BOT_TOKEN не установлен")
 
-# WEBHOOK_URL: берём из окружения или используем предоставленный вами URL
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://pumpbot-2.onrender.com")
-PORT = int(os.getenv("PORT", 10000))
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-logging.info("🚀 Запуск PumpBot (webhook mode if WEBHOOK_URL задан)...")
+# === БАЗА ДАННЫХ ===
+def init_db():
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tg_id INTEGER UNIQUE,
+        name TEXT,
+        goal TEXT,
+        level TEXT,
+        created_at DATETIME
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS workouts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        exercise TEXT,
+        weight REAL,
+        reps INTEGER,
+        sets INTEGER,
+        date DATETIME,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS achievements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        exercise TEXT,
+        max_weight REAL,
+        date DATETIME,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )''')
+    conn.commit()
+    conn.close()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def get_user(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    conn.close()
+    return user
+
+def add_user(tg_id, name, goal, level):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO users (tg_id, name, goal, level, created_at) VALUES (?, ?, ?, ?, ?)",
+              (tg_id, name, goal, level, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def save_workout(tg_id, exercise, weight, reps, sets):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    if user:
+        c.execute("INSERT INTO workouts (user_id, exercise, weight, reps, sets, date) VALUES (?, ?, ?, ?, ?, ?)",
+                  (user[0], exercise, weight, reps, sets, datetime.now()))
+        conn.commit()
+        # Обновляем достижения
+        c.execute("SELECT max_weight FROM achievements WHERE user_id = ? AND exercise = ?", (user[0], exercise))
+        ach = c.fetchone()
+        if not ach or weight > ach[0]:
+            c.execute("INSERT OR REPLACE INTO achievements (user_id, exercise, max_weight, date) VALUES (?, ?, ?, ?)",
+                      (user[0], exercise, weight, datetime.now()))
+            conn.commit()
+    conn.close()
+
+def get_stats(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        return None
+    c.execute("SELECT exercise, weight, reps, sets, date FROM workouts WHERE user_id = ? AND date >= datetime('now', '-7 days') ORDER BY date DESC",
+              (user[0],))
+    workouts = c.fetchall()
+    conn.close()
+    return workouts
+
+def get_achievements(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        return None
+    c.execute("SELECT exercise, max_weight FROM achievements WHERE user_id = ?", (user[0],))
+    achievements = c.fetchall()
+    conn.close()
+    return achievements
+
+# === МОТИВАЦИЯ ===
+QUOTES = [
+    "Ты не просто качаешь мышцы — ты качаешь характер. — Арнольд Шварценеггер",
+    "Успех приходит к тем, кто не сдается. — Ронни Колман",
+    "Лучшее время начать — сейчас. — Дориан Йейтс",
+    "Боль — это слабость, покидающая тело. — Военная поговорка",
+    "Каждый день выбирай: боль дисциплины или боль сожаления. — Эрик Томас",
+    "Тренируйся как зверь, выгляди как кинозвезда. — Денис Синявский",
+    "Если ты не прогрессируешь — ты регрессируешь. — Джей Катлер",
+    "Путь в тысячу килограммов начинается с первого приседания. — Аноним",
+    "Победа любит подготовку. — Александр Костин",
+    "Ты способен на большее, чем думаешь. — Дэвид Гоггинс"
+]
+
+CHALLENGES = [
+    "Сделай 100 отжиманий за день",
+    "Приседай 50 раз без перерыва",
+    "Планка 3 минуты за день",
+    "10 берпи каждые 30 минут",
+    "Пробеги 3 километра",
+    "100 выпадов на каждую ногу",
+    "Отжимания на кулаках 50 раз"
+]
+
+# === ИИ ПОМОЩНИК ===
+def get_ai_response(prompt):
+    if not OPENROUTER_API_KEY:
+        return "Ключ OpenRouter не настроен. Обратитесь к администратору."
+    try:
+        import requests
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "deepseek/deepseek-chat-v3-0324:free",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 300
+            }
+        )
+        return response.json()['choices'][0]['message']['content'].strip()
+    except:
+        return "Не удалось получить ответ от ИИ. Попробуйте позже."
+
+# === БОТ ===
+user_data = {}
+
+def start(update, context):
+    tg_id = update.effective_user.id
+    user = get_user(tg_id)
+    if user:
+        show_main_menu(update, context, user)
+    else:
+        user_data[tg_id] = {"step": "goal"}
+        keyboard = [
+            [InlineKeyboardButton("🏋️ Набрать массу", callback_data="goal_mass")],
+            [InlineKeyboardButton("🔥 Похудеть", callback_data="goal_lose")],
+            [InlineKeyboardButton("💪 Поддержать форму", callback_data="goal_keep")]
+        ]
+        update.message.reply_text(
+            f"Привет, {update.effective_user.first_name}! 👋\nВыбери свою цель:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+def show_main_menu(update, context, user=None):
+    tg_id = update.effective_user.id
+    if not user:
+        user = get_user(tg_id)
     keyboard = [
-        [InlineKeyboardButton("🏋️ Тренировка", callback_data="log")],
+        [InlineKeyboardButton("🏋️ Записать тренировку", callback_data="log")],
         [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("💪 План", callback_data="plan")],
+        [InlineKeyboardButton("💪 План на сегодня", callback_data="plan")],
+        [InlineKeyboardButton("🤖 Совет", callback_data="tip")],
+        [InlineKeyboardButton("🔥 Мотивация", callback_data="motivation")],
+        [InlineKeyboardButton("🎯 Челлендж", callback_data="challenge")],
+        [InlineKeyboardButton("🏆 Мои достижения", callback_data="achievements")]
     ]
-    await update.message.reply_text(
-        f"Привет, {update.effective_user.first_name}! 👋\nЯ PumpBot — твой фитнес-помощник.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    text = f"Главное меню, {user[2] if user else 'друг'}! 💪\nЧто сегодня будем делать?"
+    if hasattr(update, 'message'):
+        update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        update.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button_handler(update, context):
     query = update.callback_query
-    await query.answer()
+    query.answer()
+    tg_id = query.from_user.id
+    data = query.data
+
+    # === РЕГИСТРАЦИЯ ===
+    if data.startswith("goal_"):
+        goal = data.replace("goal_", "")
+        user_data[tg_id] = {"step": "level", "goal": goal}
+        keyboard = [
+            [InlineKeyboardButton("🟢 Новичок", callback_data="level_beginner")],
+            [InlineKeyboardButton("🟡 Средний", callback_data="level_intermediate")],
+            [InlineKeyboardButton("🔴 Продвинутый", callback_data="level_advanced")]
+        ]
+        query.edit_message_text("Теперь выбери свой уровень:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("level_"):
+        level = data.replace("level_", "")
+        goal = user_data[tg_id]["goal"]
+        add_user(tg_id, query.from_user.first_name, goal, level)
+        del user_data[tg_id]
+        user = get_user(tg_id)
+        show_main_menu(query, context, user)
+        return
+
+    # === МЕНЮ ===
+    if data == "log":
+        user_data[tg_id] = {"step": "log_exercise"}
+        query.edit_message_text("🏋️ Введи название упражнения:")
+        return
+
+    if data == "stats":
+        show_stats(query, tg_id)
+        return
+
+    if data == "plan":
+        show_plan(query, tg_id)
+        return
+
+    if data == "tip":
+        user_data[tg_id] = {"step": "tip"}
+        query.edit_message_text("🤖 Напиши упражнение, по которому нужен совет:")
+        return
+
+    if data == "motivation":
+        query.edit_message_text(f"🔥 {random.choice(QUOTES)}")
+        return
+
+    if data == "challenge":
+        challenge = random.choice(CHALLENGES)
+        user_data[tg_id] = {"challenge": challenge}
+        keyboard = [[InlineKeyboardButton("✅ Выполнил!", callback_data="challenge_done")]]
+        query.edit_message_text(f"🎯 Твой челлендж на сегодня:\n\n{challenge}",
+                                 reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == "challenge_done":
+        query.edit_message_text("🔥 Круто! Ты выполнил челлендж! Продолжай в том же духе! 💪")
+        return
+
+    if data == "achievements":
+        show_achievements(query, tg_id)
+        return
+
+def show_stats(query, tg_id):
+    workouts = get_stats(tg_id)
+    if not workouts:
+        query.edit_message_text("📊 У тебя пока нет тренировок. Запиши первую!")
+        return
     
-    if query.data == "log":
-        await query.edit_message_text("🏋️ Запиши тренировку в формате: Приседания 100 10")
-    elif query.data == "stats":
-        await query.edit_message_text("📊 Статистика появится после первой тренировки.")
-    elif query.data == "plan":
-        await query.edit_message_text("💪 План на сегодня:\n1. Приседания 3x10\n2. Отжимания 3x15")
+    text = "📊 Твоя статистика за неделю:\n\n"
+    exercises = {}
+    for w in workouts:
+        name = w[0]
+        if name not in exercises:
+            exercises[name] = {"count": 0, "max_weight": 0, "total": 0}
+        exercises[name]["count"] += 1
+        exercises[name]["total"] += w[1]
+        if w[1] > exercises[name]["max_weight"]:
+            exercises[name]["max_weight"] = w[1]
+    
+    for name, data in exercises.items():
+        text += f"🏋️ {name}: {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
+    
+    query.edit_message_text(text)
 
+def show_achievements(query, tg_id):
+    achievements = get_achievements(tg_id)
+    if not achievements:
+        query.edit_message_text("🏆 У тебя пока нет достижений. Иди к рекордам! 💪")
+        return
+    
+    text = "🏆 Твои достижения:\n\n"
+    for ex, max_w in achievements:
+        text += f"🏋️ {ex}: {max_w} кг (макс. вес)\n"
+    
+    query.edit_message_text(text)
 
-def delete_webhook():
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
-            data={"drop_pending_updates": True},
-            timeout=10,
-        )
-        logging.info("deleteWebhook status: %s, body: %s", resp.status_code, resp.text)
-        return resp.status_code == 200
-    except Exception:
-        logging.exception("Ошибка при вызове deleteWebhook")
-        return False
+def show_plan(query, tg_id):
+    user = get_user(tg_id)
+    if not user:
+        query.edit_message_text("Сначала зарегистрируйся через /start")
+        return
+    
+    goal = user[3]
+    level = user[4]
+    prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5 упражнений с подходами и повторениями."
+    plan = get_ai_response(prompt)
+    query.edit_message_text(f"💪 Твой план на сегодня:\n\n{plan}")
 
+def handle_message(update, context):
+    tg_id = update.effective_user.id
+    text = update.message.text
 
-def set_webhook(full_url):
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
-            data={"url": full_url},
-            timeout=10,
-        )
-        logging.info("setWebhook status: %s, body: %s", resp.status_code, resp.text)
-        return resp.status_code == 200
-    except Exception:
-        logging.exception("Ошибка при вызове setWebhook")
-        return False
+    if tg_id not in user_data:
+        update.message.reply_text("Нажми /start")
+        return
 
+    step = user_data[tg_id].get("step")
+
+    if step == "log_exercise":
+        user_data[tg_id]["exercise"] = text
+        user_data[tg_id]["step"] = "log_weight"
+        update.message.reply_text("Введи вес (в кг):")
+        return
+
+    if step == "log_weight":
+        try:
+            user_data[tg_id]["weight"] = float(text.replace(",", "."))
+            user_data[tg_id]["step"] = "log_reps"
+            update.message.reply_text("Введи количество повторений:")
+        except:
+            update.message.reply_text("Введи число, например: 100")
+        return
+
+    if step == "log_reps":
+        try:
+            user_data[tg_id]["reps"] = int(text)
+            user_data[tg_id]["step"] = "log_sets"
+            update.message.reply_text("Введи количество подходов:")
+        except:
+            update.message.reply_text("Введи целое число")
+        return
+
+    if step == "log_sets":
+        try:
+            sets = int(text)
+            exercise = user_data[tg_id]["exercise"]
+            weight = user_data[tg_id]["weight"]
+            reps = user_data[tg_id]["reps"]
+            save_workout(tg_id, exercise, weight, reps, sets)
+            del user_data[tg_id]
+            update.message.reply_text(f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\nПродолжай в том же духе! 💪")
+            show_main_menu(update, context)
+        except:
+            update.message.reply_text("Ошибка. Попробуй снова.")
+
+    if step == "tip":
+        prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
+        tip = get_ai_response(prompt)
+        update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}")
+        del user_data[tg_id]
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
+    init_db()
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    if WEBHOOK_URL:
-        # path без слеша, используем идентификатор бота в качестве пути, чтобы он был уникален
-        url_path = os.getenv("WEBHOOK_PATH", BOT_TOKEN.split(":")[0])
-        webhook_full_url = f"{WEBHOOK_URL.rstrip('/')}/{url_path}"
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CallbackQueryHandler(button_handler))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
-        logging.info("Подготовка webhook: %s", webhook_full_url)
-
-        # Не устанавливаем/удаляем webhook вручную здесь, PTB попытается сделать это безопасно.
-        # Вместо этого — запускаем app.run_webhook в loop с обработкой RetryAfter и backoff.
-        max_attempts = 6
-        for attempt in range(1, max_attempts + 1):
-            try:
-                logging.info("Запуск webhook (попытка %d/%d)", attempt, max_attempts)
-                app.run_webhook(listen="0.0.0.0", port=PORT, url_path=f"/{url_path}", webhook_url=webhook_full_url)
-                logging.info("app.run_webhook завершился нормально")
-                break
-            except telegram.error.RetryAfter as e:
-                wait = getattr(e, 'retry_after', 5)
-                logging.warning("RetryAfter при setWebhook: жду %s сек и пробую снова", wait)
-                time.sleep(wait + 1)
-            except Exception:
-                logging.exception("Ошибка при запуске webhook")
-                if attempt < max_attempts:
-                    delay = 5 * attempt
-                    logging.info("Ждём %s сек перед новой попыткой", delay)
-                    time.sleep(delay)
-                else:
-                    logging.error("Превышено число попыток при запуске webhook. Выход.")
-                    raise
-    else:
-        logging.info("WEBHOOK_URL не задан — запускаем polling (fallback)")
-        # fallback: polling (на случай, если WEBHOOK_URL отсутствует)
-        delete_webhook()
-        app.run_polling()
-
+    print("🚀 PumpBot FULL VERSION запущен!")
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
