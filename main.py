@@ -3,7 +3,8 @@ import os
 import sqlite3
 import random
 import asyncio
-from datetime import datetime
+import requests
+from datetime import datetime, time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
@@ -27,6 +28,7 @@ def init_db():
         name TEXT,
         goal TEXT,
         level TEXT,
+        target TEXT,
         created_at DATETIME
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS workouts (
@@ -63,6 +65,13 @@ def add_user(tg_id, name, goal, level):
     c = conn.cursor()
     c.execute("INSERT OR REPLACE INTO users (tg_id, name, goal, level, created_at) VALUES (?, ?, ?, ?, ?)",
               (tg_id, name, goal, level, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def update_target(tg_id, target):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET target = ? WHERE tg_id = ?", (target, tg_id))
     conn.commit()
     conn.close()
 
@@ -139,7 +148,6 @@ def get_ai_response(prompt):
     if not OPENROUTER_API_KEY:
         return "Ключ OpenRouter не настроен. Обратитесь к администратору."
     try:
-        import requests
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
@@ -147,13 +155,14 @@ def get_ai_response(prompt):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "deepseek/deepseek-chat-v3-0324:free",
+                "model": "dots-studio/dots-3-note-preview:free",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300
+                "max_tokens": 500
             }
         )
         return response.json()['choices'][0]['message']['content'].strip()
-    except:
+    except Exception as e:
+        logging.error(f"AI Error: {e}")
         return "Не удалось получить ответ от ИИ. Попробуйте позже."
 
 # === БОТ ===
@@ -187,13 +196,16 @@ async def show_main_menu(update, context, user=None):
         [InlineKeyboardButton("🤖 Совет", callback_data="tip")],
         [InlineKeyboardButton("🔥 Мотивация", callback_data="motivation")],
         [InlineKeyboardButton("🎯 Челлендж", callback_data="challenge")],
-        [InlineKeyboardButton("🏆 Мои достижения", callback_data="achievements")]
+        [InlineKeyboardButton("🏆 Мои достижения", callback_data="achievements")],
+        [InlineKeyboardButton("🎯 Поставить цель", callback_data="set_target")],
+        [InlineKeyboardButton("📤 Поделиться прогрессом", callback_data="share_progress")],
+        [InlineKeyboardButton("❓ Помощь", callback_data="help")]
     ]
-    text = f"Главное меню, {user[2] if user else 'друг'}! 💪\nЧто сегодня будем делать?"
+    text = f"🏋️ **Главное меню, {user[2] if user else 'друг'}!**\nЧто сегодня будем делать?"
     if hasattr(update, 'message') and update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -201,7 +213,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = query.from_user.id
     data = query.data
 
-    # === РЕГИСТРАЦИЯ ===
     if data.startswith("goal_"):
         goal = data.replace("goal_", "")
         user_data[tg_id] = {"step": "level", "goal": goal}
@@ -222,7 +233,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(update, context, user)
         return
 
-    # === МЕНЮ ===
     if data == "log":
         user_data[tg_id] = {"step": "log_exercise"}
         await query.edit_message_text("🏋️ Введи название упражнения:")
@@ -261,6 +271,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_achievements(query, tg_id)
         return
 
+    if data == "set_target":
+        user_data[tg_id] = {"step": "set_target"}
+        await query.edit_message_text("🎯 Напиши свою цель (например: 'Присесть 150 кг за месяц'):")
+        return
+
+    if data == "share_progress":
+        await share_progress(query, tg_id)
+        return
+
+    if data == "help":
+        await query.edit_message_text(
+            "❓ **Помощь**\n\n"
+            "🏋️ Записать тренировку — сохрани упражнение, вес, повторения и подходы.\n"
+            "📊 Статистика — показывает прогресс за неделю.\n"
+            "💪 План на сегодня — ИИ составит тренировку под твою цель.\n"
+            "🤖 Совет — спроси ИИ про технику упражнения.\n"
+            "🔥 Мотивация — случайная цитата чемпиона.\n"
+            "🎯 Челлендж — выполняй и становись сильнее.\n"
+            "🏆 Мои достижения — все твои рекорды.\n"
+            "🎯 Поставить цель — задай цель и бот будет напоминать.\n"
+            "📤 Поделиться прогрессом — покажи друзьям свои успехи."
+        )
+        return
+
 async def show_stats(query, tg_id):
     workouts = get_stats(tg_id)
     if not workouts:
@@ -272,9 +306,8 @@ async def show_stats(query, tg_id):
     for w in workouts:
         name = w[0]
         if name not in exercises:
-            exercises[name] = {"count": 0, "max_weight": 0, "total": 0}
+            exercises[name] = {"count": 0, "max_weight": 0}
         exercises[name]["count"] += 1
-        exercises[name]["total"] += w[1]
         if w[1] > exercises[name]["max_weight"]:
             exercises[name]["max_weight"] = w[1]
     
@@ -306,6 +339,28 @@ async def show_plan(query, tg_id):
     prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5 упражнений с подходами и повторениями."
     plan = get_ai_response(prompt)
     await query.edit_message_text(f"💪 Твой план на сегодня:\n\n{plan}")
+
+async def share_progress(query, tg_id):
+    workouts = get_stats(tg_id)
+    if not workouts:
+        await query.edit_message_text("📤 У тебя пока нет тренировок, чтобы поделиться.")
+        return
+    
+    text = "📤 **Мой прогресс за неделю:**\n\n"
+    exercises = {}
+    for w in workouts:
+        name = w[0]
+        if name not in exercises:
+            exercises[name] = {"count": 0, "max_weight": 0}
+        exercises[name]["count"] += 1
+        if w[1] > exercises[name]["max_weight"]:
+            exercises[name]["max_weight"] = w[1]
+    
+    for name, data in exercises.items():
+        text += f"🏋️ {name}: {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
+    
+    text += "\n🔥 Продолжай качать железо! 💪"
+    await query.edit_message_text(text, parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
@@ -361,7 +416,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}")
         del user_data[tg_id]
 
-def main():
+    if step == "set_target":
+        update_target(tg_id, text)
+        del user_data[tg_id]
+        await update.message.reply_text(f"🎯 Цель установлена: {text}\n\nБот будет напоминать о ней каждый день! 💪")
+
+async def daily_reminder(app):
+    while True:
+        now = datetime.now().time()
+        if now.hour == 10 and now.minute == 0:
+            conn = sqlite3.connect("pumpbot.db")
+            c = conn.cursor()
+            c.execute("SELECT tg_id, target FROM users WHERE target IS NOT NULL")
+            users = c.fetchall()
+            conn.close()
+            for user in users:
+                try:
+                    await app.bot.send_message(
+                        user[0],
+                        f"🔥 **Напоминание!**\n\nТвоя цель: {user[1]}\nПора на тренировку! 💪"
+                    )
+                except:
+                    pass
+        await asyncio.sleep(60)
+
+async def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -369,8 +448,11 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("🚀 PumpBot FULL VERSION запущен!")
-    app.run_polling()
+    # Запускаем ежедневное напоминание
+    asyncio.create_task(daily_reminder(app))
+
+    print("🚀 PumpBot ULTIMATE запущен!")
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
