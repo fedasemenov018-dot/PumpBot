@@ -3,9 +3,9 @@ import os
 import sqlite3
 import random
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
 # === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -75,7 +75,6 @@ def save_workout(tg_id, exercise, weight, reps, sets):
         c.execute("INSERT INTO workouts (user_id, exercise, weight, reps, sets, date) VALUES (?, ?, ?, ?, ?, ?)",
                   (user[0], exercise, weight, reps, sets, datetime.now()))
         conn.commit()
-        # Обновляем достижения
         c.execute("SELECT max_weight FROM achievements WHERE user_id = ? AND exercise = ?", (user[0], exercise))
         ach = c.fetchone()
         if not ach or weight > ach[0]:
@@ -160,11 +159,11 @@ def get_ai_response(prompt):
 # === БОТ ===
 user_data = {}
 
-def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
     user = get_user(tg_id)
     if user:
-        show_main_menu(update, context, user)
+        await show_main_menu(update, context, user)
     else:
         user_data[tg_id] = {"step": "goal"}
         keyboard = [
@@ -172,12 +171,12 @@ def start(update, context):
             [InlineKeyboardButton("🔥 Похудеть", callback_data="goal_lose")],
             [InlineKeyboardButton("💪 Поддержать форму", callback_data="goal_keep")]
         ]
-        update.message.reply_text(
+        await update.message.reply_text(
             f"Привет, {update.effective_user.first_name}! 👋\nВыбери свою цель:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-def show_main_menu(update, context, user=None):
+async def show_main_menu(update, context, user=None):
     tg_id = update.effective_user.id
     if not user:
         user = get_user(tg_id)
@@ -191,14 +190,14 @@ def show_main_menu(update, context, user=None):
         [InlineKeyboardButton("🏆 Мои достижения", callback_data="achievements")]
     ]
     text = f"Главное меню, {user[2] if user else 'друг'}! 💪\nЧто сегодня будем делать?"
-    if hasattr(update, 'message'):
-        update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    if hasattr(update, 'message') and update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        update.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-def button_handler(update, context):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     tg_id = query.from_user.id
     data = query.data
 
@@ -211,7 +210,7 @@ def button_handler(update, context):
             [InlineKeyboardButton("🟡 Средний", callback_data="level_intermediate")],
             [InlineKeyboardButton("🔴 Продвинутый", callback_data="level_advanced")]
         ]
-        query.edit_message_text("Теперь выбери свой уровень:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("Теперь выбери свой уровень:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data.startswith("level_"):
@@ -220,52 +219,52 @@ def button_handler(update, context):
         add_user(tg_id, query.from_user.first_name, goal, level)
         del user_data[tg_id]
         user = get_user(tg_id)
-        show_main_menu(query, context, user)
+        await show_main_menu(update, context, user)
         return
 
     # === МЕНЮ ===
     if data == "log":
         user_data[tg_id] = {"step": "log_exercise"}
-        query.edit_message_text("🏋️ Введи название упражнения:")
+        await query.edit_message_text("🏋️ Введи название упражнения:")
         return
 
     if data == "stats":
-        show_stats(query, tg_id)
+        await show_stats(query, tg_id)
         return
 
     if data == "plan":
-        show_plan(query, tg_id)
+        await show_plan(query, tg_id)
         return
 
     if data == "tip":
         user_data[tg_id] = {"step": "tip"}
-        query.edit_message_text("🤖 Напиши упражнение, по которому нужен совет:")
+        await query.edit_message_text("🤖 Напиши упражнение, по которому нужен совет:")
         return
 
     if data == "motivation":
-        query.edit_message_text(f"🔥 {random.choice(QUOTES)}")
+        await query.edit_message_text(f"🔥 {random.choice(QUOTES)}")
         return
 
     if data == "challenge":
         challenge = random.choice(CHALLENGES)
         user_data[tg_id] = {"challenge": challenge}
         keyboard = [[InlineKeyboardButton("✅ Выполнил!", callback_data="challenge_done")]]
-        query.edit_message_text(f"🎯 Твой челлендж на сегодня:\n\n{challenge}",
+        await query.edit_message_text(f"🎯 Твой челлендж на сегодня:\n\n{challenge}",
                                  reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "challenge_done":
-        query.edit_message_text("🔥 Круто! Ты выполнил челлендж! Продолжай в том же духе! 💪")
+        await query.edit_message_text("🔥 Круто! Ты выполнил челлендж! Продолжай в том же духе! 💪")
         return
 
     if data == "achievements":
-        show_achievements(query, tg_id)
+        await show_achievements(query, tg_id)
         return
 
-def show_stats(query, tg_id):
+async def show_stats(query, tg_id):
     workouts = get_stats(tg_id)
     if not workouts:
-        query.edit_message_text("📊 У тебя пока нет тренировок. Запиши первую!")
+        await query.edit_message_text("📊 У тебя пока нет тренировок. Запиши первую!")
         return
     
     text = "📊 Твоя статистика за неделю:\n\n"
@@ -282,38 +281,38 @@ def show_stats(query, tg_id):
     for name, data in exercises.items():
         text += f"🏋️ {name}: {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
     
-    query.edit_message_text(text)
+    await query.edit_message_text(text)
 
-def show_achievements(query, tg_id):
+async def show_achievements(query, tg_id):
     achievements = get_achievements(tg_id)
     if not achievements:
-        query.edit_message_text("🏆 У тебя пока нет достижений. Иди к рекордам! 💪")
+        await query.edit_message_text("🏆 У тебя пока нет достижений. Иди к рекордам! 💪")
         return
     
     text = "🏆 Твои достижения:\n\n"
     for ex, max_w in achievements:
         text += f"🏋️ {ex}: {max_w} кг (макс. вес)\n"
     
-    query.edit_message_text(text)
+    await query.edit_message_text(text)
 
-def show_plan(query, tg_id):
+async def show_plan(query, tg_id):
     user = get_user(tg_id)
     if not user:
-        query.edit_message_text("Сначала зарегистрируйся через /start")
+        await query.edit_message_text("Сначала зарегистрируйся через /start")
         return
     
     goal = user[3]
     level = user[4]
     prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5 упражнений с подходами и повторениями."
     plan = get_ai_response(prompt)
-    query.edit_message_text(f"💪 Твой план на сегодня:\n\n{plan}")
+    await query.edit_message_text(f"💪 Твой план на сегодня:\n\n{plan}")
 
-def handle_message(update, context):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
     text = update.message.text
 
     if tg_id not in user_data:
-        update.message.reply_text("Нажми /start")
+        await update.message.reply_text("Нажми /start")
         return
 
     step = user_data[tg_id].get("step")
@@ -321,25 +320,25 @@ def handle_message(update, context):
     if step == "log_exercise":
         user_data[tg_id]["exercise"] = text
         user_data[tg_id]["step"] = "log_weight"
-        update.message.reply_text("Введи вес (в кг):")
+        await update.message.reply_text("Введи вес (в кг):")
         return
 
     if step == "log_weight":
         try:
             user_data[tg_id]["weight"] = float(text.replace(",", "."))
             user_data[tg_id]["step"] = "log_reps"
-            update.message.reply_text("Введи количество повторений:")
+            await update.message.reply_text("Введи количество повторений:")
         except:
-            update.message.reply_text("Введи число, например: 100")
+            await update.message.reply_text("Введи число, например: 100")
         return
 
     if step == "log_reps":
         try:
             user_data[tg_id]["reps"] = int(text)
             user_data[tg_id]["step"] = "log_sets"
-            update.message.reply_text("Введи количество подходов:")
+            await update.message.reply_text("Введи количество подходов:")
         except:
-            update.message.reply_text("Введи целое число")
+            await update.message.reply_text("Введи целое число")
         return
 
     if step == "log_sets":
@@ -350,29 +349,28 @@ def handle_message(update, context):
             reps = user_data[tg_id]["reps"]
             save_workout(tg_id, exercise, weight, reps, sets)
             del user_data[tg_id]
-            update.message.reply_text(f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\nПродолжай в том же духе! 💪")
-            show_main_menu(update, context)
+            await update.message.reply_text(f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\nПродолжай в том же духе! 💪")
+            user = get_user(tg_id)
+            await show_main_menu(update, context, user)
         except:
-            update.message.reply_text("Ошибка. Попробуй снова.")
+            await update.message.reply_text("Ошибка. Попробуй снова.")
 
     if step == "tip":
         prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
         tip = get_ai_response(prompt)
-        update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}")
+        await update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}")
         del user_data[tg_id]
 
 def main():
     init_db()
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(button_handler))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🚀 PumpBot FULL VERSION запущен!")
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
