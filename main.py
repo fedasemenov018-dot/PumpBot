@@ -2,11 +2,10 @@ import logging
 import os
 import sqlite3
 import random
-import asyncio
 import requests
-from datetime import datetime, time
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -421,38 +420,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del user_data[tg_id]
         await update.message.reply_text(f"🎯 Цель установлена: {text}\n\nБот будет напоминать о ней каждый день! 💪")
 
-async def daily_reminder(app):
-    while True:
-        now = datetime.now().time()
-        if now.hour == 10 and now.minute == 0:
-            conn = sqlite3.connect("pumpbot.db")
-            c = conn.cursor()
-            c.execute("SELECT tg_id, target FROM users WHERE target IS NOT NULL")
-            users = c.fetchall()
-            conn.close()
-            for user in users:
-                try:
-                    await app.bot.send_message(
-                        user[0],
-                        f"🔥 **Напоминание!**\n\nТвоя цель: {user[1]}\nПора на тренировку! 💪"
-                    )
-                except:
-                    pass
-        await asyncio.sleep(60)
-
-async def main():
+def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
-
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Запускаем ежедневное напоминание
-    asyncio.create_task(daily_reminder(app))
-
+    
     print("🚀 PumpBot ULTIMATE запущен!")
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
