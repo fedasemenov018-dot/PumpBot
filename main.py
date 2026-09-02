@@ -39,10 +39,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def _run_http_server_blocking():
-    # Создаём отдельный event loop в потоке и запускаем web.run_app
-    http_app = web.Application()
-    http_app.router.add_get('/', lambda request: web.Response(text="OK"))
-    web.run_app(http_app, host='0.0.0.0', port=int(os.getenv('PORT', 10000)))
+    # Запускаем aiohttp в отдельном потоке и отключаем установку signal handlers (handle_signals=False)
+    try:
+        http_app = web.Application()
+        http_app.router.add_get('/', lambda request: web.Response(text="OK"))
+        web.run_app(http_app, host='0.0.0.0', port=int(os.getenv('PORT', 10000)), handle_signals=False)
+    except Exception as e:
+        print(f"❌ Не удалось запустить HTTP-сервер: {e}")
 
 
 def main():
