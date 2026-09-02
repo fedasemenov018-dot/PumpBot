@@ -4,6 +4,7 @@ import requests
 import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import telegram
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -75,29 +76,39 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
 
-    # Если указан WEBHOOK_URL, работаем в режиме webhook
     if WEBHOOK_URL:
         # path без слеша, используем идентификатор бота в качестве пути, чтобы он был уникален
         url_path = os.getenv("WEBHOOK_PATH", BOT_TOKEN.split(":")[0])
         webhook_full_url = f"{WEBHOOK_URL.rstrip('/')}/{url_path}"
 
-        # Удаляем предыдущие webhook если были
-        delete_webhook()
+        logging.info("Подготовка webhook: %s", webhook_full_url)
 
-        # Устанавливаем новый webhook
-        success = set_webhook(webhook_full_url)
-        if not success:
-            logging.warning("Не удалось установить webhook через API; попробуем запускать сервер всё равно и Telegram попытается подключиться")
-
-        logging.info("Запуск webhook-сервера на порту %s, путь: /%s", PORT, url_path)
-        # run_webhook откроет HTTP(S) сервер и будет принимать обновления от Telegram
-        # url_path должен начинаться с /
-        app.run_webhook(listen="0.0.0.0", port=PORT, url_path=f"/{url_path}", webhook_url=webhook_full_url)
-
+        # Не устанавливаем/удаляем webhook вручную здесь, PTB попытается сделать это безопасно.
+        # Вместо этого — запускаем app.run_webhook в loop с обработкой RetryAfter и backoff.
+        max_attempts = 6
+        for attempt in range(1, max_attempts + 1):
+            try:
+                logging.info("Запуск webhook (попытка %d/%d)", attempt, max_attempts)
+                app.run_webhook(listen="0.0.0.0", port=PORT, url_path=f"/{url_path}", webhook_url=webhook_full_url)
+                logging.info("app.run_webhook завершился нормально")
+                break
+            except telegram.error.RetryAfter as e:
+                wait = getattr(e, 'retry_after', 5)
+                logging.warning("RetryAfter при setWebhook: жду %s сек и пробую снова", wait)
+                time.sleep(wait + 1)
+            except Exception:
+                logging.exception("Ошибка при запуске webhook")
+                if attempt < max_attempts:
+                    delay = 5 * attempt
+                    logging.info("Ждём %s сек перед новой попыткой", delay)
+                    time.sleep(delay)
+                else:
+                    logging.error("Превышено число попыток при запуске webhook. Выход.")
+                    raise
     else:
-        # fallback: polling (не ожидается при вашем выборе)
-        delete_webhook()
         logging.info("WEBHOOK_URL не задан — запускаем polling (fallback)")
+        # fallback: polling (на случай, если WEBHOOK_URL отсутствует)
+        delete_webhook()
         app.run_polling()
 
 
