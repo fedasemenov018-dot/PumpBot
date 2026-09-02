@@ -1,5 +1,6 @@
 import os
 import asyncio
+import threading
 from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -36,34 +37,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ℹ️ Используй кнопки меню или команду /start")
 
+
+def _run_http_server_blocking():
+    # Создаём отдельный event loop в потоке и запускаем web.run_app
+    http_app = web.Application()
+    http_app.router.add_get('/', lambda request: web.Response(text="OK"))
+    web.run_app(http_app, host='0.0.0.0', port=int(os.getenv('PORT', 10000)))
+
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
     
-    # Запускаем HTTP-сервер для Render в фоне
+    # Запускаем HTTP-сервер в отдельном потоке — это гарантирует, что Render увидит открытый порт
     try:
-        asyncio.create_task(start_http_server())
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        loop.create_task(start_http_server())
+        thread = threading.Thread(target=_run_http_server_blocking, daemon=True)
+        thread.start()
+        print("✅ HTTP-сервер запущен в отдельном потоке")
+    except Exception as e:
+        print(f"❌ Не удалось запустить HTTP-сервер в потоке: {e}")
 
     print("✅ PumpBot успешно запущен и слушает запросы!")
     app.run_polling()
 
-
-async def health_check(request):
-    return web.Response(text="OK")
-
-async def start_http_server():
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.getenv('PORT', 10000)))
-    await site.start()
-    print("✅ HTTP-сервер запущен на порту 10000")
 
 if __name__ == "__main__":
     main()
