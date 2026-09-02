@@ -3,6 +3,7 @@ import threading
 from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import requests
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
@@ -62,6 +63,16 @@ def main():
         print("✅ HTTP-сервер запущен в отдельном потоке")
     except Exception as e:
         print(f"❌ Не удалось запустить HTTP-сервер в потоке: {e}")
+
+    # Удаляем возможный webhook Telegram, чтобы избежать конфликта при long polling
+    try:
+        resp = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook", data={"drop_pending_updates": True})
+        if resp.status_code == 200:
+            print("✅ Удалён webhook Telegram (если был установлен)")
+        else:
+            print(f"⚠️ Не удалось удалить webhook: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"❌ Ошибка при удалении webhook: {e}")
 
     print("✅ PumpBot успешно запущен и слушает запросы!")
     # run_polling — синхронный метод, он сам управляет event loop
