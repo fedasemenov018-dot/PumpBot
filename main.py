@@ -1,10 +1,7 @@
 import os
-import threading
-import time
 import logging
 import requests
-import telegram
-from aiohttp import web
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -15,21 +12,11 @@ if not BOT_TOKEN:
     logging.error("❌ Ошибка: TELEGRAM_BOT_TOKEN не найден в переменных окружения")
     exit(1)
 
-logging.info("🚀 Запуск PumpBot...")
+# WEBHOOK_URL: берём из окружения или используем предоставленный вами URL
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://pumpbot-2.onrender.com")
+PORT = int(os.getenv("PORT", 10000))
 
-async def health_check(request):
-    return web.Response(text="OK")
-
-
-def _run_http_server_blocking():
-    try:
-        http_app = web.Application()
-        http_app.router.add_get('/', health_check)
-        # handle_signals=False нужен для запуска в не‑главном потоке
-        web.run_app(http_app, host='0.0.0.0', port=int(os.getenv('PORT', 10000)), handle_signals=False)
-    except Exception:
-        logging.exception("❌ Не удалось запустить HTTP-сервер")
-
+logging.info("🚀 Запуск PumpBot (webhook mode if WEBHOOK_URL задан)...")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -41,7 +28,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Привет, {update.effective_user.first_name}! 👋\nЯ PumpBot — твой фитнес-помощник.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -69,48 +55,50 @@ def delete_webhook():
         return False
 
 
+def set_webhook(full_url):
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            data={"url": full_url},
+            timeout=10,
+        )
+        logging.info("setWebhook status: %s, body: %s", resp.status_code, resp.text)
+        return resp.status_code == 200
+    except Exception:
+        logging.exception("Ошибка при вызове setWebhook")
+        return False
+
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
 
-    # Запускаем HTTP-сервер в отдельном потоке — Render увидит открытый порт
-    thread = threading.Thread(target=_run_http_server_blocking, daemon=True)
-    thread.start()
-    logging.info("✅ HTTP-сервер запущен в отдельном потоке")
+    # Если указан WEBHOOK_URL, работаем в режиме webhook
+    if WEBHOOK_URL:
+        # path без слеша, используем идентификатор бота в качестве пути, чтобы он был уникален
+        url_path = os.getenv("WEBHOOK_PATH", BOT_TOKEN.split(":")[0])
+        webhook_full_url = f"{WEBHOOK_URL.rstrip('/')}/{url_path}"
 
-    # Попытка удалить webhook перед polling
-    delete_webhook()
+        # Удаляем предыдущие webhook если были
+        delete_webhook()
 
-    # Запуск polling с повторными попытками при Conflict
-    max_retries = 10
-    base_delay = 5  # seconds
-    for attempt in range(1, max_retries + 1):
-        try:
-            logging.info("Запуск polling (попытка %d/%d)", attempt, max_retries)
-            app.run_polling()
-            logging.info("app.run_polling завершился нормально")
-            break
-        except telegram.error.Conflict as e:
-            logging.warning("Conflict при polling: %s", e)
-            delete_webhook()
-            if attempt < max_retries:
-                delay = base_delay * attempt
-                logging.info("Ждём %s сек перед новой попыткой", delay)
-                time.sleep(delay)
-            else:
-                logging.error("Превышено число попыток при Conflict. Выход.")
-                raise
-        except Exception as e:
-            logging.exception("Неожиданная ошибка при run_polling: %s", e)
-            if attempt < max_retries:
-                delay = base_delay * attempt
-                logging.info("Ждём %s сек перед новой попыткой", delay)
-                time.sleep(delay)
-            else:
-                logging.error("Превышено число попыток при ошибках. Выход.")
-                raise
+        # Устанавливаем новый webhook
+        success = set_webhook(webhook_full_url)
+        if not success:
+            logging.warning("Не удалось установить webhook через API; попробуем запускать сервер всё равно и Telegram попытается подключиться")
+
+        logging.info("Запуск webhook-сервера на порту %s, путь: /%s", PORT, url_path)
+        # run_webhook откроет HTTP(S) сервер и будет принимать обновления от Telegram
+        # url_path должен начинаться с /
+        app.run_webhook(listen="0.0.0.0", port=PORT, url_path=f"/{url_path}", webhook_url=webhook_full_url)
+
+    else:
+        # fallback: polling (не ожидается при вашем выборе)
+        delete_webhook()
+        logging.info("WEBHOOK_URL не задан — запускаем polling (fallback)")
+        app.run_polling()
 
 
 if __name__ == "__main__":
