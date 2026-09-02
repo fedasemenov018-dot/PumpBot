@@ -1,81 +1,47 @@
-import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
+    print("❌ Ошибка: TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+    exit(1)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+print("🚀 Запуск PumpBot...")
 
-# === ХРАНИЛИЩЕ (ВРЕМЕННОЕ) ===
-user_data = {}
-
-# === ОБРАБОТЧИКИ ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
     keyboard = [
-        [InlineKeyboardButton("🏋️ Записать тренировку", callback_data="log")],
+        [InlineKeyboardButton("🏋️ Тренировка", callback_data="log")],
         [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("💪 План на сегодня", callback_data="plan")],
-        [InlineKeyboardButton("🤖 Совет", callback_data="tip")]
+        [InlineKeyboardButton("💪 План", callback_data="plan")],
     ]
     await update.message.reply_text(
-        f"Привет, {user.first_name}! 👋\nЭто PumpBot — твой фитнес-коуч.",
+        f"Привет, {update.effective_user.first_name}! 👋\nЯ PumpBot — твой фитнес-помощник.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
-
-    if data == "log":
-        await query.edit_message_text("🏋️ Введи упражнение, вес, повторения через пробел\nНапример: Приседания 100 10")
-        user_data[query.from_user.id] = {"step": "log"}
-    elif data == "stats":
-        await query.edit_message_text("📊 Тут будет твоя статистика (в разработке)")
-    elif data == "plan":
-        await query.edit_message_text("💪 План на сегодня:\n1. Приседания 3x10\n2. Отжимания 3x15\n3. Выпады 3x12")
-    elif data == "tip":
-        await query.edit_message_text("🤖 Напиши упражнение, по которому нужен совет")
-        user_data[query.from_user.id] = {"step": "tip"}
+    
+    if query.data == "log":
+        await query.edit_message_text("🏋️ Запиши тренировку в формате: Приседания 100 10")
+    elif query.data == "stats":
+        await query.edit_message_text("📊 Статистика появится после первой тренировки.")
+    elif query.data == "plan":
+        await query.edit_message_text("💪 План на сегодня:\n1. Приседания 3x10\n2. Отжимания 3x15")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text
+    await update.message.reply_text("ℹ️ Используй кнопки меню или команду /start")
 
-    if user_id in user_data and user_data[user_id].get("step") == "log":
-        parts = text.split()
-        if len(parts) == 3:
-            exercise, weight, reps = parts
-            await update.message.reply_text(
-                f"✅ Записано: {exercise}, {weight}кг, {reps} раз\nПродолжай в том же духе! 💪"
-            )
-            del user_data[user_id]
-        else:
-            await update.message.reply_text("❌ Введи в формате: Упражнение Вес Повторения")
-    elif user_id in user_data and user_data[user_id].get("step") == "tip":
-        await update.message.reply_text(
-            f"🤖 Совет по {text}: держи спину прямо и дыши правильно! 💪"
-        )
-        del user_data[user_id]
-    else:
-        await update.message.reply_text("Нажми /start")
-
-# === ЗАПУСК ===
-async def main():
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    logger.info("🚀 PumpBot запущен и готов к работе!")
-    await app.run_polling()
+    app.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Просто нажми /start")))
+    
+    print("✅ PumpBot успешно запущен и слушает запросы!")
+    app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
