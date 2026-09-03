@@ -2,15 +2,12 @@ import logging
 import os
 import sqlite3
 import random
-import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-HF_TOKEN = os.getenv("HF_TOKEN")
-
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен")
 
@@ -192,28 +189,44 @@ CHALLENGES = [
     "Отжимания на кулаках 50 раз. 👊"
 ]
 
-# === ИИ ПОМОЩНИК (Hugging Face) ===
+# === ИИ БЕЗ РЕГИСТРАЦИИ (ВШИТЫЕ СОВЕТЫ) ===
 def get_ai_response(prompt):
-    if not HF_TOKEN:
-        return "Ключ Hugging Face не найден. Добавь HF_TOKEN в Render, бро."
-    import requests
-    try:
-        response = requests.post(
-            "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
-            headers={"Authorization": f"Bearer {HF_TOKEN}"},
-            json={"inputs": prompt, "parameters": {"max_new_tokens": 500}},
-            timeout=30
+    # Шаблоны для разных запросов
+    if "план" in prompt.lower():
+        return (
+            "Йо, бро! План на сегодня:\n\n"
+            "1. Приседания со штангой — 4x10\n"
+            "2. Жим лежа — 4x8\n"
+            "3. Тяга штанги в наклоне — 4x10\n"
+            "4. Жим гантелей сидя — 3x12\n"
+            "5. Гиперэкстензия — 3x15\n"
+            "6. Пресс скручивания — 3x20\n\n"
+            "Разминка 10 минут, заминка 5 минут. Жми!"
         )
-        data = response.json()
-        if isinstance(data, list) and 'generated_text' in data[0]:
-            return data[0]['generated_text'].strip()
-        elif 'error' in data:
-            return f"Ошибка API: {data['error']}"
-        else:
-            return "ИИ вернул странный ответ. Попробуй ещё."
-    except Exception as e:
-        logging.error(f"AI Error: {e}")
-        return "Не удалось получить ответ. API может быть перегружен, попробуй позже."
+    
+    if "совет" in prompt.lower() or "техника" in prompt.lower():
+        return (
+            "Слушай сюда, бро!\n\n"
+            "1. Держи спину прямой\n"
+            "2. Не дёргай весом\n"
+            "3. Дыши правильно\n"
+            "4. Работай в полную амплитуду\n"
+            "5. Не забывай про разминку\n\n"
+            "Эти правила — база, без них никуда! 💀"
+        )
+    
+    # Универсальные советы
+    tips = [
+        "Тренируйся до отказа, бро! Это единственный путь к росту! 💀",
+        "Жми больше, чем в прошлый раз — это твой долг! 💪",
+        "Питание — это 70% успеха. Жри, бро! 🍖",
+        "Спи не меньше 8 часов, иначе прогресса не будет. 😴",
+        "Тяжёлые веса — твой друг. Не бойся их! 🏋️",
+        "Мышцы растут только когда ты выходишь из зоны комфорта. 🔥",
+        "Каждая тренировка — это шаг к лучшей версии себя. 🦍",
+        "Никто не станет сильным, просто смотря на штангу. Подойди и жми! 💀"
+    ]
+    return random.choice(tips)
 
 # === БОТ ===
 user_data = {}
@@ -336,7 +349,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❓ **Чего надо:**\n\n"
             "🏋️ Трень — сохрани упражнение, вес, повторения.\n"
             "📊 Прогресс — статистика за неделю.\n"
-            "💪 План — ИИ составит тренировку.\n"
+            "💪 План — тренер составит тренировку.\n"
             "📋 Мои треньки — список упражнений.\n"
             "🤖 Совет — спроси про технику.\n"
             "🔥 Мотива — жёсткая цитата.\n"
@@ -399,7 +412,7 @@ async def show_plan(query, tg_id):
     
     goal = user[3]
     level = user[4]
-    prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5-6 упражнений с подходами и повторениями в формате:\n1. Название - подходы x повторения"
+    prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'."
     plan_text = get_ai_response(prompt)
     
     save_plan(tg_id, datetime.now().strftime('%A'), plan_text)
@@ -481,10 +494,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ошибка. Попробуй снова, но не тупи.")
 
     if step == "tip":
-        prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
+        prompt = f"Дай совет по упражнению {text}."
         tip = get_ai_response(prompt)
-        # ОТПРАВЛЯЕМ БЕЗ Markdown, чтобы избежать ошибок
-        await update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}", parse_mode=None)
+        await update.message.reply_text(f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
         del user_data[tg_id]
 
     if step == "set_target":
