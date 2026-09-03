@@ -2,6 +2,7 @@ import logging
 import os
 import sqlite3
 import random
+import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -482,7 +483,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step == "tip":
         prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
         tip = get_ai_response(prompt)
-        await update.message.reply_text(f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
+        # ОТПРАВЛЯЕМ БЕЗ Markdown, чтобы избежать ошибок
+        await update.message.reply_text(f"🤖 Совет по {text}:\n\n{tip}", parse_mode=None)
         del user_data[tg_id]
 
     if step == "set_target":
