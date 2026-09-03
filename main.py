@@ -163,7 +163,7 @@ def complete_exercise(tg_id, exercise_index):
     conn.close()
     return False
 
-# === МОТИВАЦИЯ (СТИЛЬ TREN TWINS) ===
+# === МОТИВАЦИЯ ===
 QUOTES = [
     "Йо, бро! Ты не просто качаешь мышцы — ты качаешь характер. 💀",
     "Слабаки сдаются, а ты жмёшь до отказа. 👊",
@@ -189,9 +189,8 @@ CHALLENGES = [
     "Отжимания на кулаках 50 раз. 👊"
 ]
 
-# === ИИ БЕЗ РЕГИСТРАЦИИ (ВШИТЫЕ СОВЕТЫ) ===
+# === ИИ БЕЗ РЕГИСТРАЦИИ ===
 def get_ai_response(prompt):
-    # Шаблоны для разных запросов
     if "план" in prompt.lower():
         return (
             "Йо, бро! План на сегодня:\n\n"
@@ -215,16 +214,13 @@ def get_ai_response(prompt):
             "Эти правила — база, без них никуда! 💀"
         )
     
-    # Универсальные советы
     tips = [
         "Тренируйся до отказа, бро! Это единственный путь к росту! 💀",
         "Жми больше, чем в прошлый раз — это твой долг! 💪",
         "Питание — это 70% успеха. Жри, бро! 🍖",
         "Спи не меньше 8 часов, иначе прогресса не будет. 😴",
         "Тяжёлые веса — твой друг. Не бойся их! 🏋️",
-        "Мышцы растут только когда ты выходишь из зоны комфорта. 🔥",
-        "Каждая тренировка — это шаг к лучшей версии себя. 🦍",
-        "Никто не станет сильным, просто смотря на штангу. Подойди и жми! 💀"
+        "Мышцы растут только когда ты выходишь из зоны комфорта. 🔥"
     ]
     return random.choice(tips)
 
@@ -253,19 +249,22 @@ async def show_main_menu(update, context, user=None):
     tg_id = update.effective_user.id
     if not user:
         user = get_user(tg_id)
+    
     keyboard = [
-        [InlineKeyboardButton("🏋️ Трень", callback_data="log")],
-        [InlineKeyboardButton("📊 Прогресс", callback_data="stats")],
-        [InlineKeyboardButton("💪 План", callback_data="plan")],
-        [InlineKeyboardButton("📋 Мои треньки", callback_data="my_workouts")],
-        [InlineKeyboardButton("🤖 Совет", callback_data="tip")],
-        [InlineKeyboardButton("🔥 Мотива", callback_data="motivation")],
-        [InlineKeyboardButton("🎯 Челлендж", callback_data="challenge")],
-        [InlineKeyboardButton("🏆 Реки", callback_data="achievements")],
-        [InlineKeyboardButton("🎯 Цель", callback_data="set_target")],
+        [InlineKeyboardButton("📊 Прогресс", callback_data="stats"),
+         InlineKeyboardButton("🏆 Реки", callback_data="achievements"),
+         InlineKeyboardButton("🎯 Цель", callback_data="set_target")],
+        [InlineKeyboardButton("🏋️ Трень", callback_data="log"),
+         InlineKeyboardButton("📋 Мои треньки", callback_data="my_workouts"),
+         InlineKeyboardButton("💪 План", callback_data="plan")],
+        [InlineKeyboardButton("🤖 Совет", callback_data="tip"),
+         InlineKeyboardButton("🔥 Мотива", callback_data="motivation"),
+         InlineKeyboardButton("🎯 Челлендж", callback_data="challenge")],
         [InlineKeyboardButton("❓ Чего надо", callback_data="help")]
     ]
+    
     text = f"Чё качаем сегодня, {user[2] if user else 'бро'}? 💪"
+    
     if hasattr(update, 'message') and update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
@@ -326,7 +325,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "challenge":
         challenge = random.choice(CHALLENGES)
         user_data[tg_id] = {"challenge": challenge}
-        keyboard = [[InlineKeyboardButton("✅ Выполнил!", callback_data="challenge_done")]]
+        keyboard = [
+            [InlineKeyboardButton("✅ Выполнил!", callback_data="challenge_done")],
+            [InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]
+        ]
         await query.edit_message_text(f"🎯 Челлендж на сегодня:\n\n{challenge}",
                                  reply_markup=InlineKeyboardMarkup(keyboard))
         return
@@ -341,10 +343,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "set_target":
         user_data[tg_id] = {"step": "set_target"}
-        await query.edit_message_text("🎯 Напиши цель (например: 'Присесть 150 кг'):")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text("🎯 Напиши цель (например: 'Присесть 150 кг'):", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "help":
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
         await query.edit_message_text(
             "❓ **Чего надо:**\n\n"
             "🏋️ Трень — сохрани упражнение, вес, повторения.\n"
@@ -356,14 +360,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎯 Челлендж — испытание на день.\n"
             "🏆 Реки — твои достижения.\n"
             "🎯 Цель — поставь цель и иди к ней.\n\n"
-            "Жми кнопки, не тупи 🫡"
+            "Жми кнопки, не тупи 🫡",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
     if data.startswith("complete_"):
         idx = int(data.replace("complete_", ""))
         if complete_exercise(tg_id, idx):
-            await query.edit_message_text("✅ Выполнил! Красава, бро! 💪")
+            keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+            await query.edit_message_text("✅ Выполнил! Красава, бро! 💪", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await query.edit_message_text("❌ Что-то пошло не так. Попробуй снова.")
         return
@@ -374,7 +380,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_stats(query, tg_id):
     workouts = get_stats(tg_id)
     if not workouts:
-        await query.edit_message_text("📊 У тебя пока нет тренировок. А ты вообще тренишься, бро? 😤")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text("📊 У тебя пока нет тренировок. А ты вообще тренишься, бро? 😤", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     text = "📊 **Твой прогресс за неделю:**\n\n"
@@ -390,24 +397,28 @@ async def show_stats(query, tg_id):
     for name, data in exercises.items():
         text += f"🏋️ **{name}:** {data['count']} раз, макс. {data['max_weight']} кг\n"
     
-    await query.edit_message_text(text, parse_mode='Markdown')
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_achievements(query, tg_id):
     achievements = get_achievements(tg_id)
     if not achievements:
-        await query.edit_message_text("🏆 У тебя пока нет достижений. Иди ставь рекорды, слабак! 💀")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text("🏆 У тебя пока нет достижений. Иди ставь рекорды, слабак! 💀", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     text = "🏆 **Твои рекорды:**\n\n"
     for ex, max_w in achievements:
         text += f"🏋️ **{ex}:** {max_w} кг (макс. вес)\n"
     
-    await query.edit_message_text(text, parse_mode='Markdown')
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_plan(query, tg_id):
     user = get_user(tg_id)
     if not user:
-        await query.edit_message_text("Сначала зарегайся через /start, бро.")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text("Сначала зарегайся через /start, бро.", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     goal = user[3]
@@ -422,7 +433,7 @@ async def show_plan(query, tg_id):
     for i, line in enumerate(lines):
         if line.strip() and not line.startswith('✅'):
             keyboard.append([InlineKeyboardButton(f"☑️ {line[:30]}...", callback_data=f"complete_{i}")])
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+    keyboard.append([InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")])
     
     await query.edit_message_text(
         f"💪 **План на сегодня:**\n\n{plan_text}\n\nНажимай кнопки, когда выполнишь!",
@@ -433,14 +444,15 @@ async def show_plan(query, tg_id):
 async def show_my_workouts(query, tg_id):
     workouts = get_stats(tg_id)
     if not workouts:
-        await query.edit_message_text("📋 У тебя пока нет тренировок. Ты вообще жал в этом месяце?")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text("📋 У тебя пока нет тренировок. Ты вообще жал в этом месяце?", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     
     text = "📋 **Твои тренировки:**\n\n"
     for i, w in enumerate(workouts[:20], 1):
         text += f"{i}. {w[0]} — {w[1]}кг × {w[2]} × {w[3]} ({w[4][:10]})\n"
     
-    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -496,13 +508,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step == "tip":
         prompt = f"Дай совет по упражнению {text}."
         tip = get_ai_response(prompt)
-        await update.message.reply_text(f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await update.message.reply_text(
+            f"🤖 **Совет по {text}:**\n\n{tip}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
         del user_data[tg_id]
 
     if step == "set_target":
         update_target(tg_id, text)
         del user_data[tg_id]
-        await update.message.reply_text(f"🎯 Цель: {text}\nТеперь ты должен её достичь. Не подведи, бро!")
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await update.message.reply_text(
+            f"🎯 Цель: {text}\nТеперь ты должен её достичь. Не подведи, бро!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 def main():
     init_db()
