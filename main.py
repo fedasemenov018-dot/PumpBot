@@ -2,16 +2,12 @@ import logging
 import os
 import sqlite3
 import random
-import requests
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # === НАСТРОЙКИ ===
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-
 if not BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен")
 
@@ -45,6 +41,15 @@ def init_db():
         user_id INTEGER,
         exercise TEXT,
         max_weight REAL,
+        date DATETIME,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS workout_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        day TEXT,
+        exercises TEXT,
+        completed INTEGER DEFAULT 0,
         date DATETIME,
         FOREIGN KEY(user_id) REFERENCES users(id)
     )''')
@@ -118,73 +123,94 @@ def get_achievements(tg_id):
     conn.close()
     return achievements
 
-# === КАРТИНКИ И GIF ===
-GREETING_GIF = "https://media.giphy.com/media/3o7abKhOpu0N9HNGhO/giphy.gif"
-MOTIVATION_GIFS = [
-    "https://media.giphy.com/media/l0HlNQ3JjE1p1Qw5m/giphy.gif",
-    "https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif",
-    "https://media.giphy.com/media/l41lM3c3Q1yHr0fY4/giphy.gif",
-    "https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif"
-]
-WORKOUT_IMAGES = {
-    "приседания": "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400",
-    "жим": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400",
-    "планка": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400",
-    "отжимания": "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=400",
-    "тяга": "https://images.unsplash.com/photo-1581009146145-b5f8f3f0f0f0?w=400"
-}
-DEFAULT_IMAGE = "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400"
+def save_plan(tg_id, day, exercises):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    if user:
+        c.execute("INSERT INTO workout_plans (user_id, day, exercises, completed, date) VALUES (?, ?, ?, ?, ?)",
+                  (user[0], day, exercises, 0, datetime.now()))
+        conn.commit()
+    conn.close()
 
-# === МОТИВАЦИЯ ===
+def get_plan(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id, day, exercises, completed FROM workout_plans WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= datetime('now', 'start of day') ORDER BY id DESC LIMIT 1",
+              (tg_id,))
+    plan = c.fetchone()
+    conn.close()
+    return plan
+
+def complete_exercise(tg_id, exercise_index):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id, exercises, completed FROM workout_plans WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= datetime('now', 'start of day') ORDER BY id DESC LIMIT 1",
+              (tg_id,))
+    plan = c.fetchone()
+    if plan and not plan[2]:
+        ex_list = plan[1].split('\n')
+        if 0 <= exercise_index < len(ex_list):
+            ex_list[exercise_index] = f"✅ {ex_list[exercise_index]}"
+            c.execute("UPDATE workout_plans SET exercises = ? WHERE id = ?", ('\n'.join(ex_list), plan[0]))
+            conn.commit()
+            if all(e.startswith('✅') for e in ex_list if e.strip()):
+                c.execute("UPDATE workout_plans SET completed = 1 WHERE id = ?", (plan[0],))
+                conn.commit()
+            conn.close()
+            return True
+    conn.close()
+    return False
+
+# === МОТИВАЦИЯ (СТИЛЬ TREN TWINS) ===
 QUOTES = [
-    "Ты не просто качаешь мышцы — ты качаешь характер. — Арнольд Шварценеггер",
-    "Успех приходит к тем, кто не сдается. — Ронни Колман",
-    "Лучшее время начать — сейчас. — Дориан Йейтс",
-    "Боль — это слабость, покидающая тело. — Военная поговорка",
-    "Каждый день выбирай: боль дисциплины или боль сожаления. — Эрик Томас",
-    "Тренируйся как зверь, выгляди как кинозвезда. — Денис Синявский",
-    "Если ты не прогрессируешь — ты регрессируешь. — Джей Катлер",
-    "Путь в тысячу килограммов начинается с первого приседания. — Аноним",
-    "Победа любит подготовку. — Александр Костин",
-    "Ты способен на большее, чем думаешь. — Дэвид Гоггинс"
+    "Йо, бро! Ты не просто качаешь мышцы — ты качаешь характер. Тренируйся как зверь, выгляди как кинозвезда. 💀",
+    "Слабаки сдаются, а ты жмёшь до отказа. Ронни Колман отдыхает. 👊",
+    "Лучшее время начать — сейчас. Или ты думал, Мистер Олимпия сам к тебе придёт? 😤",
+    "Боль — это слабость, покидающая тело. А ты ведь сильный, бро? 🔥",
+    "Каждый день выбирай: боль дисциплины или боль сожаления. Я знаю, что ты выберешь. 💪",
+    "Тренируйся как зверь, выгляди как кинозвезда. Братан, ты на правильном пути. 🦍",
+    "Если ты не прогрессируешь — ты регрессируешь. Джей Катлер бы не одобрил. 🏆",
+    "Путь в тысячу килограммов начинается с первого приседания. А ты уже начал? 🔥",
+    "Победа любит подготовку. А ты готов пахать? 🫡",
+    "Ты способен на большее, чем думаешь. Дэвид Гоггинс бы тобой гордился. 💀",
+    "Мистер Олимпия сам с тебя пыль будет сдувать, если так продолжишь. 🏆",
+    "Ты думаешь, это тяжело? А ты попробуй пожать стоху на раз. 😤",
+    "Жми, приседай, становись сильнее. Это наш путь, бро. 🦍"
 ]
 
 CHALLENGES = [
-    "Сделай 100 отжиманий за день",
-    "Приседай 50 раз без перерыва",
-    "Планка 3 минуты за день",
-    "10 берпи каждые 30 минут",
-    "Пробеги 3 километра",
-    "100 выпадов на каждую ногу",
-    "Отжимания на кулаках 50 раз"
+    "Сделай 100 отжиманий за день. Легко, бро? 🥵",
+    "Приседай 50 раз без перерыва. Только не упади. 💀",
+    "Планка 3 минуты за день. Держись, слабак. 🫡",
+    "10 берпи каждые 30 минут. Ты готов к этому? 🔥",
+    "Пробеги 3 километра. Или ты струсил? 😤",
+    "100 выпадов на каждую ногу. Ноги будут гореть, но это того стоит. 🦵",
+    "Отжимания на кулаках 50 раз. Ты же сильный, бро? 👊"
 ]
 
-# === ИИ ПОМОЩНИК ===
+# === ИИ ПОМОЩНИК (БЕСПЛАТНЫЙ) ===
 def get_ai_response(prompt):
-    if not OPENROUTER_API_KEY:
-        return "Ключ OpenRouter не настроен. Обратитесь к администратору."
+    import requests
     try:
         response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
+            "https://api.puter.com/puterai/openai/v1/chat/completions",
             json={
-                "model": "dots-studio/dots-3-note-preview:free",
+                "model": "gpt-3.5-turbo",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 500
-            }
+            },
+            timeout=30
         )
         data = response.json()
-        if 'error' in data:
-            return f"Ошибка API: {data['error'].get('message', 'Неизвестная ошибка')}"
-        if 'choices' not in data or not data['choices']:
-            return "ИИ вернул пустой ответ. Попробуйте позже."
-        return data['choices'][0]['message']['content'].strip()
+        if 'choices' in data and data['choices']:
+            return data['choices'][0]['message']['content'].strip()
+        else:
+            return "ИИ что-то завис. Попробуй ещё раз, бро."
     except Exception as e:
         logging.error(f"AI Error: {e}")
-        return f"Не удалось получить ответ от ИИ. Ошибка: {str(e)}"
+        return "Не удалось получить ответ. Может, API упал? Попробуй позже."
 
 # === БОТ ===
 user_data = {}
@@ -192,9 +218,6 @@ user_data = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
     user = get_user(tg_id)
-    
-    # Отправляем GIF-приветствие
-    await update.message.reply_animation(GREETING_GIF, caption="🔥 Добро пожаловать в PumpBot!")
     
     if user:
         await show_main_menu(update, context, user)
@@ -206,7 +229,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("💪 Поддержать форму", callback_data="goal_keep")]
         ]
         await update.message.reply_text(
-            f"Привет, {update.effective_user.first_name}! 👋\nВыбери свою цель:",
+            f"Йо, {update.effective_user.first_name}! 💪\nТреним? Сначала выбери цель:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
@@ -215,22 +238,22 @@ async def show_main_menu(update, context, user=None):
     if not user:
         user = get_user(tg_id)
     keyboard = [
-        [InlineKeyboardButton("🏋️ Записать тренировку", callback_data="log")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="stats")],
-        [InlineKeyboardButton("💪 План на сегодня", callback_data="plan")],
+        [InlineKeyboardButton("🏋️ Трень", callback_data="log")],
+        [InlineKeyboardButton("📊 Прогресс", callback_data="stats")],
+        [InlineKeyboardButton("💪 План", callback_data="plan")],
+        [InlineKeyboardButton("📋 Мои треньки", callback_data="my_workouts")],
         [InlineKeyboardButton("🤖 Совет", callback_data="tip")],
-        [InlineKeyboardButton("🔥 Мотивация", callback_data="motivation")],
+        [InlineKeyboardButton("🔥 Мотива", callback_data="motivation")],
         [InlineKeyboardButton("🎯 Челлендж", callback_data="challenge")],
-        [InlineKeyboardButton("🏆 Мои достижения", callback_data="achievements")],
-        [InlineKeyboardButton("🎯 Поставить цель", callback_data="set_target")],
-        [InlineKeyboardButton("📤 Поделиться прогрессом", callback_data="share_progress")],
-        [InlineKeyboardButton("❓ Помощь", callback_data="help")]
+        [InlineKeyboardButton("🏆 Реки", callback_data="achievements")],
+        [InlineKeyboardButton("🎯 Цель", callback_data="set_target")],
+        [InlineKeyboardButton("❓ Чего надо", callback_data="help")]
     ]
-    text = f"🏋️ **Главное меню, {user[2] if user else 'друг'}!**\nЧто сегодня будем делать?"
+    text = f"Чё качаем сегодня, {user[2] if user else 'бро'}? 💪"
     if hasattr(update, 'message') and update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -260,7 +283,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "log":
         user_data[tg_id] = {"step": "log_exercise"}
-        await query.edit_message_text("🏋️ Введи название упражнения:")
+        await query.edit_message_text("Название упражнения: (жми, не тупи 🫡)")
         return
 
     if data == "stats":
@@ -271,25 +294,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_plan(query, tg_id)
         return
 
+    if data == "my_workouts":
+        await show_my_workouts(query, tg_id)
+        return
+
     if data == "tip":
         user_data[tg_id] = {"step": "tip"}
-        await query.edit_message_text("🤖 Напиши упражнение, по которому нужен совет:")
+        await query.edit_message_text("Напиши упражнение, по которому нужен совет:")
         return
 
     if data == "motivation":
-        await show_motivation(query)
+        await query.edit_message_text(f"🔥 {random.choice(QUOTES)}")
         return
 
     if data == "challenge":
         challenge = random.choice(CHALLENGES)
         user_data[tg_id] = {"challenge": challenge}
         keyboard = [[InlineKeyboardButton("✅ Выполнил!", callback_data="challenge_done")]]
-        await query.edit_message_text(f"🎯 Твой челлендж на сегодня:\n\n{challenge}",
+        await query.edit_message_text(f"🎯 Челлендж на сегодня:\n\n{challenge}",
                                  reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if data == "challenge_done":
-        await query.edit_message_text("🔥 Круто! Ты выполнил челлендж! Продолжай в том же духе! 💪")
+        await query.edit_message_text("🔥 Красава! Ты выжил! Продолжай в том же духе, бро! 💪")
         return
 
     if data == "achievements":
@@ -298,96 +325,43 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "set_target":
         user_data[tg_id] = {"step": "set_target"}
-        await query.edit_message_text("🎯 Напиши свою цель (например: 'Присесть 150 кг за месяц'):")
-        return
-
-    if data == "share_progress":
-        await share_progress(query, tg_id)
+        await query.edit_message_text("🎯 Напиши цель (например: 'Присесть 150 кг'):")
         return
 
     if data == "help":
         await query.edit_message_text(
-            "❓ **Помощь**\n\n"
-            "🏋️ Записать тренировку — сохрани упражнение, вес, повторения и подходы.\n"
-            "📊 Статистика — показывает прогресс за неделю с графиком.\n"
-            "💪 План на сегодня — ИИ составит тренировку под твою цель.\n"
-            "🤖 Совет — спроси ИИ про технику упражнения (с картинкой).\n"
-            "🔥 Мотивация — случайная цитата чемпиона + картинка.\n"
-            "🎯 Челлендж — выполняй и становись сильнее.\n"
-            "🏆 Мои достижения — все твои рекорды.\n"
-            "🎯 Поставить цель — задай цель и бот будет напоминать.\n"
-            "📤 Поделиться прогрессом — покажи друзьям свои успехи."
+            "❓ **Чего надо:**\n\n"
+            "🏋️ Трень — сохрани упражнение, вес, повторения.\n"
+            "📊 Прогресс — статистика за неделю.\n"
+            "💪 План — ИИ составит тренировку.\n"
+            "📋 Мои треньки — список упражнений.\n"
+            "🤖 Совет — спроси про технику.\n"
+            "🔥 Мотива — жёсткая цитата.\n"
+            "🎯 Челлендж — испытание на день.\n"
+            "🏆 Реки — твои достижения.\n"
+            "🎯 Цель — поставь цель и иди к ней.\n\n"
+            "Жми кнопки, не тупи 🫡"
         )
         return
+
+    if data.startswith("complete_"):
+        idx = int(data.replace("complete_", ""))
+        if complete_exercise(tg_id, idx):
+            await query.edit_message_text("✅ Выполнил! Красава, бро! 💪")
+        else:
+            await query.edit_message_text("❌ Что-то пошло не так. Попробуй снова.")
+        return
+
+    if data == "back_to_menu":
+        await show_main_menu(update, context)
 
 async def show_stats(query, tg_id):
     workouts = get_stats(tg_id)
     if not workouts:
-        await query.edit_message_text("📊 У тебя пока нет тренировок. Запиши первую!")
+        await query.edit_message_text("📊 У тебя пока нет тренировок. А ты вообще тренишься, бро? 😤")
         return
     
-    text = "📊 **Твоя статистика за неделю:**\n\n"
-    exercises = {}
-    total_workouts = 0
-    
-    for w in workouts:
-        name = w[0]
-        if name not in exercises:
-            exercises[name] = {"count": 0, "max_weight": 0, "total_weight": 0}
-        exercises[name]["count"] += 1
-        exercises[name]["total_weight"] += w[1]
-        if w[1] > exercises[name]["max_weight"]:
-            exercises[name]["max_weight"] = w[1]
-        total_workouts += 1
-    
-    # Прогресс-бар
-    if total_workouts > 0:
-        progress = min(100, total_workouts * 10)
-        bar = "▓" * (progress // 10) + "░" * (10 - progress // 10)
-        text += f"🔥 **Прогресс:** {bar} {progress}%\n\n"
-    
-    for name, data in exercises.items():
-        text += f"🏋️ **{name}:** {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
-    
-    await query.edit_message_text(text, parse_mode='Markdown')
-
-async def show_achievements(query, tg_id):
-    achievements = get_achievements(tg_id)
-    if not achievements:
-        await query.edit_message_text("🏆 У тебя пока нет достижений. Иди к рекордам! 💪")
-        return
-    
-    text = "🏆 **Твои достижения:**\n\n"
-    for ex, max_w in achievements:
-        text += f"🏋️ **{ex}:** {max_w} кг (макс. вес)\n"
-    
-    await query.edit_message_text(text, parse_mode='Markdown')
-
-async def show_plan(query, tg_id):
-    user = get_user(tg_id)
-    if not user:
-        await query.edit_message_text("Сначала зарегистрируйся через /start")
-        return
-    
-    goal = user[3]
-    level = user[4]
-    prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5 упражнений с подходами и повторениями."
-    plan = get_ai_response(prompt)
-    await query.edit_message_text(f"💪 **Твой план на сегодня:**\n\n{plan}", parse_mode='Markdown')
-
-async def show_motivation(query):
-    quote = random.choice(QUOTES)
-    gif = random.choice(MOTIVATION_GIFS)
-    await query.edit_message_text(f"🔥 {quote}")
-    await query.message.reply_animation(gif)
-
-async def share_progress(query, tg_id):
-    workouts = get_stats(tg_id)
-    if not workouts:
-        await query.edit_message_text("📤 У тебя пока нет тренировок, чтобы поделиться.")
-        return
-    
-    text = "📤 **Мой прогресс за неделю:**\n\n"
+    text = "📊 **Твой прогресс за неделю:**\n\n"
     exercises = {}
     for w in workouts:
         name = w[0]
@@ -398,17 +372,67 @@ async def share_progress(query, tg_id):
             exercises[name]["max_weight"] = w[1]
     
     for name, data in exercises.items():
-        text += f"🏋️ **{name}:** {data['count']} тренировок, макс. вес {data['max_weight']} кг\n"
+        text += f"🏋️ **{name}:** {data['count']} раз, макс. {data['max_weight']} кг\n"
     
-    text += "\n🔥 Продолжай качать железо! 💪"
     await query.edit_message_text(text, parse_mode='Markdown')
+
+async def show_achievements(query, tg_id):
+    achievements = get_achievements(tg_id)
+    if not achievements:
+        await query.edit_message_text("🏆 У тебя пока нет достижений. Иди ставь рекорды, слабак! 💀")
+        return
+    
+    text = "🏆 **Твои рекорды:**\n\n"
+    for ex, max_w in achievements:
+        text += f"🏋️ **{ex}:** {max_w} кг (макс. вес)\n"
+    
+    await query.edit_message_text(text, parse_mode='Markdown')
+
+async def show_plan(query, tg_id):
+    user = get_user(tg_id)
+    if not user:
+        await query.edit_message_text("Сначала зарегайся через /start, бро.")
+        return
+    
+    goal = user[3]
+    level = user[4]
+    prompt = f"Составь план тренировки на сегодня для цели '{goal}', уровень '{level}'. Дай 5-6 упражнений с подходами и повторениями в формате:\n1. Название - подходы x повторения"
+    plan_text = get_ai_response(prompt)
+    
+    save_plan(tg_id, datetime.now().strftime('%A'), plan_text)
+    
+    keyboard = []
+    lines = plan_text.split('\n')
+    for i, line in enumerate(lines):
+        if line.strip() and not line.startswith('✅'):
+            keyboard.append([InlineKeyboardButton(f"☑️ {line[:30]}...", callback_data=f"complete_{i}")])
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+    
+    await query.edit_message_text(
+        f"💪 **План на сегодня:**\n\n{plan_text}\n\nНажимай кнопки, когда выполнишь!",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+async def show_my_workouts(query, tg_id):
+    workouts = get_stats(tg_id)
+    if not workouts:
+        await query.edit_message_text("📋 У тебя пока нет тренировок. Ты вообще жал в этом месяце?")
+        return
+    
+    text = "📋 **Твои тренировки:**\n\n"
+    for i, w in enumerate(workouts[:20], 1):
+        text += f"{i}. {w[0]} — {w[1]}кг × {w[2]} × {w[3]} ({w[4][:10]})\n"
+    
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = update.effective_user.id
-    text = update.message.text.lower()
+    text = update.message.text
 
     if tg_id not in user_data:
-        await update.message.reply_text("Нажми /start")
+        await update.message.reply_text("Нажми /start, бро. Не тупи.")
         return
 
     step = user_data[tg_id].get("step")
@@ -416,25 +440,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step == "log_exercise":
         user_data[tg_id]["exercise"] = text
         user_data[tg_id]["step"] = "log_weight"
-        await update.message.reply_text("Введи вес (в кг):")
+        await update.message.reply_text("Вес в кг:")
         return
 
     if step == "log_weight":
         try:
             user_data[tg_id]["weight"] = float(text.replace(",", "."))
             user_data[tg_id]["step"] = "log_reps"
-            await update.message.reply_text("Введи количество повторений:")
+            await update.message.reply_text("Повторения:")
         except:
-            await update.message.reply_text("Введи число, например: 100")
+            await update.message.reply_text("Введи число, бро. Не тупи.")
         return
 
     if step == "log_reps":
         try:
             user_data[tg_id]["reps"] = int(text)
             user_data[tg_id]["step"] = "log_sets"
-            await update.message.reply_text("Введи количество подходов:")
+            await update.message.reply_text("Подходы:")
         except:
-            await update.message.reply_text("Введи целое число")
+            await update.message.reply_text("Целое число, бро.")
         return
 
     if step == "log_sets":
@@ -445,35 +469,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reps = user_data[tg_id]["reps"]
             save_workout(tg_id, exercise, weight, reps, sets)
             del user_data[tg_id]
-            
-            # Отправляем мотивирующий GIF после тренировки
-            gif = random.choice(MOTIVATION_GIFS)
-            await update.message.reply_animation(
-                gif,
-                caption=f"✅ Записано: {exercise}, {weight}кг, {reps} раз, {sets} подходов\n\n🔥 Ты красавчик! Продолжай в том же духе! 💪"
+            await update.message.reply_text(
+                f"✅ {exercise}: {weight}кг × {reps} × {sets}\nКрасава, бро! Прогресс не стоит на месте, в отличие от тебя 👊"
             )
             user = get_user(tg_id)
             await show_main_menu(update, context, user)
         except:
-            await update.message.reply_text("Ошибка. Попробуй снова.")
+            await update.message.reply_text("Ошибка. Попробуй снова, но не тупи.")
 
     if step == "tip":
-        # Ищем картинку для упражнения
-        image_url = DEFAULT_IMAGE
-        for key in WORKOUT_IMAGES:
-            if key in text:
-                image_url = WORKOUT_IMAGES[key]
-                break
-        
         prompt = f"Дай совет по упражнению {text}. Как улучшить технику, безопасность, результат."
         tip = get_ai_response(prompt)
-        await update.message.reply_photo(image_url, caption=f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
+        await update.message.reply_text(f"🤖 **Совет по {text}:**\n\n{tip}", parse_mode='Markdown')
         del user_data[tg_id]
 
     if step == "set_target":
         update_target(tg_id, text)
         del user_data[tg_id]
-        await update.message.reply_text(f"🎯 Цель установлена: {text}\n\nБот будет напоминать о ней каждый день! 💪")
+        await update.message.reply_text(f"🎯 Цель: {text}\nТеперь ты должен её достичь. Не подведи, бро!")
 
 def main():
     init_db()
@@ -483,7 +496,7 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🚀 PumpBot ULTIMATE запущен!")
+    print("🚀 PumpBot в стиле Tren Twins запущен!")
     app.run_polling()
 
 if __name__ == "__main__":
