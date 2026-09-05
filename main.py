@@ -33,23 +33,17 @@ async def send_tren_video(update, video_type, caption):
 
 # === РАСШИРЕННАЯ БАЗА ПРОДУКТОВ ===
 FOOD_DB = {
-    # Мясо и птица
     "курица": 165, "куриная грудка": 165, "куриное филе": 110, "куриная ножка": 180,
     "куриная кожа": 450, "говядина": 250, "говяжий фарш": 270, "свинина": 320,
     "свиной фарш": 340, "баранина": 280, "индейка": 130, "утка": 350,
     "кролик": 156, "конина": 150, "оленина": 160, "перепел": 170,
-    # Субпродукты
     "печень": 130, "куриная печень": 140, "говяжья печень": 130, "сердце": 160,
-    "куриное сердце": 150, "говяжье сердце": 160, "почки": 120, "куриные почки": 130,
-    "язык": 200, "говяжий язык": 200, "свиной язык": 210, "мозги": 120,
-    # Рыба и морепродукты
     "лосось": 200, "семга": 200, "тунец": 130, "скумбрия": 180,
     "сельдь": 160, "треска": 75, "минтай": 70, "окунь": 120,
     "щука": 90, "судак": 85, "лещ": 110, "карась": 85,
     "карп": 100, "форель": 150, "горбуша": 140, "кижуч": 140,
     "креветки": 90, "кальмар": 100, "мидии": 80, "устрицы": 85,
     "осьминог": 85, "краб": 90, "раки": 80, "морской гребешок": 95,
-    # Молочка
     "яйцо": 155, "яйца": 155, "яичный белок": 45, "яичный желток": 320,
     "молоко": 60, "кефир": 50, "ряженка": 55, "йогурт": 60,
     "творог": 120, "творог обезжиренный": 80, "творог 5%": 130,
@@ -57,14 +51,12 @@ FOOD_DB = {
     "сыр": 350, "пармезан": 400, "моцарелла": 300, "фета": 260,
     "бри": 330, "камамбер": 340, "чеддер": 380, "гауда": 350,
     "масло сливочное": 750, "маргарин": 720, "спред": 500,
-    # Крупы и злаки
     "рис": 130, "рис бурый": 110, "рис дикий": 100, "гречка": 110,
     "овсянка": 80, "геркулес": 85, "манка": 120, "перловка": 130,
     "пшено": 140, "кукурузная крупа": 150, "ячневая": 130,
     "макароны": 130, "вермишель": 130, "спагетти": 130, "лапша": 140,
     "хлеб": 250, "хлеб черный": 200, "батон": 260, "сухари": 350,
     "багет": 280, "лаваш": 270, "лепешка": 250,
-    # Овощи
     "картофель": 80, "батат": 90, "морковь": 35, "свекла": 43,
     "лук": 40, "чеснок": 149, "помидор": 18, "огурец": 15,
     "перец": 26, "перец болгарский": 26, "кабачок": 17, "тыква": 26,
@@ -73,7 +65,6 @@ FOOD_DB = {
     "редис": 16, "репа": 30, "брюква": 35, "редиска": 20,
     "кинза": 25, "петрушка": 45, "укроп": 40, "салат": 15,
     "шпинат": 23, "щавель": 22, "рукола": 25,
-    # Фрукты и ягоды
     "банан": 90, "яблоко": 52, "груша": 57, "апельсин": 47,
     "мандарин": 38, "лимон": 34, "грейпфрут": 35, "помело": 38,
     "виноград": 65, "арбуз": 30, "дыня": 35, "персик": 45,
@@ -82,33 +73,26 @@ FOOD_DB = {
     "ежевика": 43, "голубика": 40, "смородина": 45, "крыжовник": 44,
     "хурма": 65, "киви": 48, "манго": 60, "папайя": 45,
     "ананас": 50, "гранат": 70, "инжир": 75, "финики": 280,
-    # Орехи и сухофрукты
     "орехи": 600, "грецкий орех": 650, "миндаль": 600,
     "арахис": 550, "кедровый орех": 650, "фундук": 650,
     "кешью": 570, "фисташки": 560, "семечки": 580,
     "изюм": 300, "курага": 250, "чернослив": 230,
     "кокос": 350, "кокосовая стружка": 400,
-    # Соусы и заправки
     "майонез": 600, "кетчуп": 100, "горчица": 66, "соевый соус": 60,
     "оливковое масло": 900, "подсолнечное масло": 900, "кунжутное масло": 890,
     "соус песто": 500, "соус тартар": 400, "соевый майонез": 600,
     "бальзамический уксус": 88, "яблочный уксус": 21,
-    # Грибы
     "грибы": 22, "белые": 30, "шампиньоны": 20, "вешенки": 33,
     "лисички": 20, "опята": 22, "подберезовики": 25,
-    # Бобовые
     "фасоль": 90, "чечевица": 110, "горох": 80, "нут": 130,
     "соевые бобы": 140, "маш": 130, "адзуки": 130,
-    # Мучное и сладкое
     "сахар": 400, "мед": 320, "варенье": 250, "джем": 280,
     "шоколад": 550, "молочный шоколад": 550, "горький шоколад": 500,
     "печенье": 450, "пряники": 350, "ватрушка": 300, "булочка": 320,
     "пирожок": 280, "чебурек": 350, "беляш": 350,
-    # Напитки
     "кофе": 2, "чай": 1, "компот": 40, "сок": 50,
     "морс": 35, "квас": 30, "лимонад": 40,
     "протеин": 120, "гейнер": 350, "бца": 100,
-    # Прочее
     "тофу": 76, "соевое молоко": 40, "вода": 0, "соль": 0,
     "специи": 0, "перец черный": 0, "лавровый лист": 0,
     "бульон": 30, "суп": 50, "борщ": 60,
@@ -408,11 +392,18 @@ async def button_handler(update, context):
         return
 
     if data == "help":
+        keyboard = [
+            [InlineKeyboardButton("📩 Написать в поддержку", url="https://t.me/Tehnoprofff")],
+            [InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]
+        ]
         await query.edit_message_text(
-            "🏋️ **Тренировка** — записать тренировку или посмотреть план\n"
-            "📊 **Мой прогресс** — статистика и рекорды\n"
-            "🍔 **Питание** — счетчик калорий\n"
-            "❓ **Помощь** — эта подсказка"
+            "❓ **Помощь**\n\n"
+            "🏋️ **Тренировка** — записать тренировку или посмотреть план.\n"
+            "📊 **Мой прогресс** — статистика и рекорды.\n"
+            "🍔 **Питание** — счетчик калорий.\n\n"
+            "По всем вопросам пиши в поддержку:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
         )
         return
 
@@ -425,7 +416,6 @@ async def handle_plan_action(query, tg_id, data, action):
         await query.edit_message_text("Ошибка. Попробуй снова.")
         return
     
-    # Формат: plan_done_Приседания_80_10_0
     exercise = parts[2]
     weight = float(parts[3])
     reps = int(parts[4])
@@ -433,18 +423,24 @@ async def handle_plan_action(query, tg_id, data, action):
     save_workout(tg_id, exercise, weight, reps, 1, action)
     
     emoji = "✅" if action == 'done' else "❌"
-    await query.edit_message_text(f"{emoji} {exercise}: {weight}кг × {reps} раз\n{'Выполнил!' if action == 'done' else 'Не выполнил!'}")
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+    
+    await query.edit_message_text(
+        f"{emoji} {exercise}: {weight}кг × {reps} раз\n{'Выполнил!' if action == 'done' else 'Не выполнил!'}",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
     
     if action == 'done':
         await send_tren_video(query, "workout", "🔥 Тренируйся на максимум! 💀")
-    
-    await show_plan(query, tg_id)
 
 async def show_plan(query, tg_id):
     workouts = get_today_workouts(tg_id)
     
     if not workouts:
-        await query.edit_message_text("📋 Сегодня нет тренировок. Запиши первую, бро!")
+        await query.edit_message_text(
+            "📋 Сегодня нет тренировок. Запиши первую, бро!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]])
+        )
         return
     
     keyboard = []
@@ -458,7 +454,10 @@ async def show_plan(query, tg_id):
             ])
     
     if not keyboard:
-        await query.edit_message_text("✅ Ты уже отметил все упражнения на сегодня! Отдыхай, бро!")
+        await query.edit_message_text(
+            "✅ Ты уже отметил все упражнения на сегодня! Отдыхай, бро!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]])
+        )
         return
     
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
@@ -473,16 +472,19 @@ async def show_plan(query, tg_id):
 async def show_my_workouts(query, tg_id):
     workouts = get_all_workouts(tg_id)
     if not workouts:
-        await query.edit_message_text("📋 Нет тренировок, бро!")
+        await query.edit_message_text(
+            "📋 Нет тренировок, бро!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]])
+        )
         return
     
     text = "📋 **Твои тренировки:**\n\n"
     for i, (ex, weight, reps, sets, status, date) in enumerate(workouts, 1):
-        status_text = "✅" if status == 'done' else "❌"
+        status_text = "✅" if status == 'done' else "❌" if status == 'fail' else "⏳"
         date_str = date[:10] if date else ""
         text += f"{i}. {ex} — {weight}кг × {reps} × {sets} {status_text} [{date_str}]\n"
     
-    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_progress(query, tg_id):
@@ -504,7 +506,7 @@ async def show_progress(query, tg_id):
     else:
         text += "🏋️ Нет данных за неделю, бро."
     
-    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_calories(query, tg_id):
@@ -535,7 +537,7 @@ async def show_calories(query, tg_id):
     keyboard = [
         [InlineKeyboardButton("➕ Записать еду", callback_data="log_food")],
         [InlineKeyboardButton("⚙️ Лимит", callback_data="set_cal_limit")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]
+        [InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -581,7 +583,11 @@ async def handle_message(update, context):
             reps = user_data[tg_id]["reps"]
             save_workout(tg_id, exercise, weight, reps, sets, 'done')
             del user_data[tg_id]
-            await update.message.reply_text(f"✅ {exercise}: {weight}кг × {reps} × {sets}\nКрасава, бро! 👊")
+            keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+            await update.message.reply_text(
+                f"✅ {exercise}: {weight}кг × {reps} × {sets}\nКрасава, бро! 👊",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             await send_tren_video(update, "workout", "🔥 Тренируйся на максимум! 💀")
         except Exception as e:
             logging.error(f"Error in log_sets: {e}")
@@ -596,7 +602,7 @@ async def handle_message(update, context):
         keyboard = []
         for name, cal in results[:6]:
             keyboard.append([InlineKeyboardButton(f"{name} — {cal} ккал/100г", callback_data=f"food_{name}_{cal}")])
-        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
+        keyboard.append([InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")])
         user_data[tg_id] = {"step": "food_select"}
         await update.message.reply_text("Выбери продукт:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
@@ -612,7 +618,11 @@ async def handle_message(update, context):
             total_cal = cal_per_100 * grams // 100
             save_food(tg_id, product, total_cal, grams)
             del user_data[tg_id]
-            await update.message.reply_text(f"✅ {product} — {total_cal} ккал ({grams}г)\nЖри, бро! 🍖")
+            keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+            await update.message.reply_text(
+                f"✅ {product} — {total_cal} ккал ({grams}г)\nЖри, бро! 🍖",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
             await send_tren_video(update, "food", "🍖 Жри, бро! Это топливо для мышц!")
         except Exception as e:
             logging.error(f"Error in food_select: {e}")
@@ -624,7 +634,11 @@ async def handle_message(update, context):
             limit = int(text)
             update_cal_limit(tg_id, limit)
             del user_data[tg_id]
-            await update.message.reply_text(f"✅ Лимит: {limit} ккал/день")
+            keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+            await update.message.reply_text(
+                f"✅ Лимит: {limit} ккал/день",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         except:
             await update.message.reply_text("Введи число, бро.")
         return
