@@ -31,43 +31,88 @@ async def send_tren_video(update, video_type, caption):
     else:
         await update.message.reply_text(caption)
 
-# === БАЗА ПРОДУКТОВ ===
+# === РАСШИРЕННАЯ БАЗА ПРОДУКТОВ ===
 FOOD_DB = {
-    "курица": 165, "куриная грудка": 165, "куриное филе": 110,
-    "говядина": 250, "свинина": 320, "баранина": 280,
-    "индейка": 130, "утка": 350, "кролик": 156,
+    # Мясо и птица
+    "курица": 165, "куриная грудка": 165, "куриное филе": 110, "куриная ножка": 180,
+    "куриная кожа": 450, "говядина": 250, "говяжий фарш": 270, "свинина": 320,
+    "свиной фарш": 340, "баранина": 280, "индейка": 130, "утка": 350,
+    "кролик": 156, "конина": 150, "оленина": 160, "перепел": 170,
+    # Субпродукты
+    "печень": 130, "куриная печень": 140, "говяжья печень": 130, "сердце": 160,
+    "куриное сердце": 150, "говяжье сердце": 160, "почки": 120, "куриные почки": 130,
+    "язык": 200, "говяжий язык": 200, "свиной язык": 210, "мозги": 120,
+    # Рыба и морепродукты
     "лосось": 200, "семга": 200, "тунец": 130, "скумбрия": 180,
     "сельдь": 160, "треска": 75, "минтай": 70, "окунь": 120,
-    "креветки": 90, "кальмар": 100, "мидии": 80,
-    "яйцо": 155, "яйца": 155, "молоко": 60, "кефир": 50,
-    "йогурт": 60, "творог": 120, "сметана": 200, "сливки": 300,
-    "сыр": 350, "пармезан": 400, "масло сливочное": 750,
-    "рис": 130, "гречка": 110, "овсянка": 80, "манка": 120,
-    "перловка": 130, "пшено": 140, "кукурузная крупа": 150,
-    "макароны": 130, "вермишель": 130, "хлеб": 250,
-    "хлеб черный": 200, "батон": 260, "сухари": 350,
+    "щука": 90, "судак": 85, "лещ": 110, "карась": 85,
+    "карп": 100, "форель": 150, "горбуша": 140, "кижуч": 140,
+    "креветки": 90, "кальмар": 100, "мидии": 80, "устрицы": 85,
+    "осьминог": 85, "краб": 90, "раки": 80, "морской гребешок": 95,
+    # Молочка
+    "яйцо": 155, "яйца": 155, "яичный белок": 45, "яичный желток": 320,
+    "молоко": 60, "кефир": 50, "ряженка": 55, "йогурт": 60,
+    "творог": 120, "творог обезжиренный": 80, "творог 5%": 130,
+    "сметана": 200, "сметана 15%": 150, "сливки": 300, "сливки 10%": 120,
+    "сыр": 350, "пармезан": 400, "моцарелла": 300, "фета": 260,
+    "бри": 330, "камамбер": 340, "чеддер": 380, "гауда": 350,
+    "масло сливочное": 750, "маргарин": 720, "спред": 500,
+    # Крупы и злаки
+    "рис": 130, "рис бурый": 110, "рис дикий": 100, "гречка": 110,
+    "овсянка": 80, "геркулес": 85, "манка": 120, "перловка": 130,
+    "пшено": 140, "кукурузная крупа": 150, "ячневая": 130,
+    "макароны": 130, "вермишель": 130, "спагетти": 130, "лапша": 140,
+    "хлеб": 250, "хлеб черный": 200, "батон": 260, "сухари": 350,
+    "багет": 280, "лаваш": 270, "лепешка": 250,
+    # Овощи
     "картофель": 80, "батат": 90, "морковь": 35, "свекла": 43,
     "лук": 40, "чеснок": 149, "помидор": 18, "огурец": 15,
-    "перец": 26, "кабачок": 17, "тыква": 26, "брокколи": 34,
-    "цветная капуста": 25, "капуста": 28, "сельдерей": 16,
-    "спаржа": 20, "горошек": 80, "кукуруза": 100,
+    "перец": 26, "перец болгарский": 26, "кабачок": 17, "тыква": 26,
+    "брокколи": 34, "цветная капуста": 25, "капуста": 28, "пекинская капуста": 16,
+    "сельдерей": 16, "спаржа": 20, "горошек": 80, "кукуруза": 100,
+    "редис": 16, "репа": 30, "брюква": 35, "редиска": 20,
+    "кинза": 25, "петрушка": 45, "укроп": 40, "салат": 15,
+    "шпинат": 23, "щавель": 22, "рукола": 25,
+    # Фрукты и ягоды
     "банан": 90, "яблоко": 52, "груша": 57, "апельсин": 47,
-    "мандарин": 38, "лимон": 34, "грейпфрут": 35,
+    "мандарин": 38, "лимон": 34, "грейпфрут": 35, "помело": 38,
     "виноград": 65, "арбуз": 30, "дыня": 35, "персик": 45,
-    "абрикос": 48, "слива": 42, "вишня": 50, "клубника": 32,
-    "малина": 42, "черника": 44, "клюква": 46,
+    "абрикос": 48, "слива": 42, "вишня": 50, "черешня": 52,
+    "клубника": 32, "малина": 42, "черника": 44, "клюква": 46,
+    "ежевика": 43, "голубика": 40, "смородина": 45, "крыжовник": 44,
+    "хурма": 65, "киви": 48, "манго": 60, "папайя": 45,
+    "ананас": 50, "гранат": 70, "инжир": 75, "финики": 280,
+    # Орехи и сухофрукты
     "орехи": 600, "грецкий орех": 650, "миндаль": 600,
     "арахис": 550, "кедровый орех": 650, "фундук": 650,
     "кешью": 570, "фисташки": 560, "семечки": 580,
-    "изюм": 300, "курага": 250, "финики": 280,
+    "изюм": 300, "курага": 250, "чернослив": 230,
+    "кокос": 350, "кокосовая стружка": 400,
+    # Соусы и заправки
     "майонез": 600, "кетчуп": 100, "горчица": 66, "соевый соус": 60,
-    "оливковое масло": 900, "подсолнечное масло": 900,
+    "оливковое масло": 900, "подсолнечное масло": 900, "кунжутное масло": 890,
+    "соус песто": 500, "соус тартар": 400, "соевый майонез": 600,
+    "бальзамический уксус": 88, "яблочный уксус": 21,
+    # Грибы
     "грибы": 22, "белые": 30, "шампиньоны": 20, "вешенки": 33,
+    "лисички": 20, "опята": 22, "подберезовики": 25,
+    # Бобовые
     "фасоль": 90, "чечевица": 110, "горох": 80, "нут": 130,
-    "сахар": 400, "мед": 320, "варенье": 250, "шоколад": 550,
-    "печенье": 450, "пряники": 350, "ватрушка": 300,
+    "соевые бобы": 140, "маш": 130, "адзуки": 130,
+    # Мучное и сладкое
+    "сахар": 400, "мед": 320, "варенье": 250, "джем": 280,
+    "шоколад": 550, "молочный шоколад": 550, "горький шоколад": 500,
+    "печенье": 450, "пряники": 350, "ватрушка": 300, "булочка": 320,
+    "пирожок": 280, "чебурек": 350, "беляш": 350,
+    # Напитки
     "кофе": 2, "чай": 1, "компот": 40, "сок": 50,
-    "тофу": 76, "соевое молоко": 40, "вода": 0, "соль": 0
+    "морс": 35, "квас": 30, "лимонад": 40,
+    "протеин": 120, "гейнер": 350, "бца": 100,
+    # Прочее
+    "тофу": 76, "соевое молоко": 40, "вода": 0, "соль": 0,
+    "специи": 0, "перец черный": 0, "лавровый лист": 0,
+    "бульон": 30, "суп": 50, "борщ": 60,
+    "пельмени": 250, "вареники": 200, "манты": 280, "хинкали": 260,
 }
 
 def search_food(query):
@@ -99,6 +144,7 @@ def init_db():
         weight REAL,
         reps INTEGER,
         sets INTEGER,
+        status TEXT DEFAULT 'pending',
         date DATETIME
     )''')
     c.execute('''CREATE TABLE IF NOT EXISTS achievements (
@@ -114,15 +160,6 @@ def init_db():
         product TEXT,
         calories INTEGER,
         grams INTEGER,
-        date DATETIME
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS plan_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        exercise TEXT,
-        weight REAL,
-        reps INTEGER,
-        status TEXT,
         date DATETIME
     )''')
     conn.commit()
@@ -186,13 +223,8 @@ def save_workout(tg_id, exercise, weight, reps, sets, status='done'):
     c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
     user = c.fetchone()
     if user:
-        # Сохраняем в workouts
-        c.execute("INSERT INTO workouts (user_id, exercise, weight, reps, sets, date) VALUES (?, ?, ?, ?, ?, ?)",
-                  (user[0], exercise, weight, reps, sets, datetime.now()))
-        # Сохраняем в plan_log со статусом
-        c.execute("INSERT INTO plan_log (user_id, exercise, weight, reps, status, date) VALUES (?, ?, ?, ?, ?, ?)",
-                  (user[0], exercise, weight, reps, status, datetime.now()))
-        # Обновляем достижения
+        c.execute("INSERT INTO workouts (user_id, exercise, weight, reps, sets, status, date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (user[0], exercise, weight, reps, sets, status, datetime.now()))
         c.execute("SELECT max_weight FROM achievements WHERE user_id = ? AND exercise = ?", (user[0], exercise))
         ach = c.fetchone()
         if not ach or weight > ach[0]:
@@ -201,31 +233,48 @@ def save_workout(tg_id, exercise, weight, reps, sets, status='done'):
         conn.commit()
     conn.close()
 
-def get_plan_today(tg_id):
+def get_today_workouts(tg_id):
     conn = sqlite3.connect("pumpbot.db")
     c = conn.cursor()
-    c.execute("SELECT exercise, weight, reps, status FROM plan_log WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= datetime('now', 'start of day') ORDER BY id DESC",
-              (tg_id,))
-    plan = c.fetchall()
-    conn.close()
-    return plan
-
-def get_stats(tg_id):
-    conn = sqlite3.connect("pumpbot.db")
-    c = conn.cursor()
-    c.execute("SELECT exercise, weight, reps, sets, date FROM workouts WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= datetime('now', '-7 days') ORDER BY date DESC",
-              (tg_id,))
+    c.execute("""
+        SELECT exercise, weight, reps, sets, status 
+        FROM workouts 
+        WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) 
+        AND date >= datetime('now', 'start of day')
+        ORDER BY date DESC
+    """, (tg_id,))
     workouts = c.fetchall()
     conn.close()
     return workouts
 
-def get_achievements(tg_id):
+def get_week_stats(tg_id):
     conn = sqlite3.connect("pumpbot.db")
     c = conn.cursor()
-    c.execute("SELECT exercise, max_weight FROM achievements WHERE user_id = (SELECT id FROM users WHERE tg_id = ?)", (tg_id,))
-    achievements = c.fetchall()
+    c.execute("""
+        SELECT exercise, MAX(weight) 
+        FROM workouts 
+        WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) 
+        AND date >= datetime('now', '-7 days')
+        AND status = 'done'
+        GROUP BY exercise
+    """, (tg_id,))
+    best = c.fetchall()
     conn.close()
-    return achievements
+    return best
+
+def get_all_workouts(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("""
+        SELECT exercise, weight, reps, sets, status, date 
+        FROM workouts 
+        WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) 
+        ORDER BY date DESC
+        LIMIT 20
+    """, (tg_id,))
+    workouts = c.fetchall()
+    conn.close()
+    return workouts
 
 # === МОТИВАЦИЯ ===
 QUOTES = [
@@ -327,24 +376,12 @@ async def button_handler(update, context):
         await show_my_workouts(query, tg_id)
         return
 
-    if data == "stats":
-        await show_stats(query, tg_id)
+    if data.startswith("plan_done_"):
+        await handle_plan_action(query, tg_id, data, 'done')
         return
 
-    if data == "achievements":
-        achievements = get_achievements(tg_id)
-        if not achievements:
-            await query.edit_message_text("🏆 Нет рекордов, бро!")
-            return
-        text = "🏆 **Твои рекорды:**\n\n"
-        for ex, max_w in achievements:
-            text += f"🏋️ {ex}: {max_w} кг\n"
-        await query.edit_message_text(text, parse_mode='Markdown')
-        return
-
-    if data == "set_target":
-        user_data[tg_id] = {"step": "set_target"}
-        await query.edit_message_text("🎯 Напиши цель (например: 'Присесть 150 кг'):")
+    if data.startswith("plan_fail_"):
+        await handle_plan_action(query, tg_id, data, 'fail')
         return
 
     if data == "calories":
@@ -370,10 +407,6 @@ async def button_handler(update, context):
             await query.edit_message_text(f"Введи вес в граммах (например: 150):")
         return
 
-    if data.startswith("plan_done_") or data.startswith("plan_fail_"):
-        await handle_plan_action(query, tg_id, data)
-        return
-
     if data == "help":
         await query.edit_message_text(
             "🏋️ **Тренировка** — записать тренировку или посмотреть план\n"
@@ -386,42 +419,48 @@ async def button_handler(update, context):
     if data == "back_to_menu":
         await show_main_menu(update, context)
 
-async def handle_plan_action(query, tg_id, data):
-    # Разбираем действие: plan_done_1 или plan_fail_1
+async def handle_plan_action(query, tg_id, data, action):
     parts = data.split("_")
-    action = parts[1]  # done или fail
-    exercise_name = parts[2]
+    if len(parts) < 4:
+        await query.edit_message_text("Ошибка. Попробуй снова.")
+        return
+    
+    # Формат: plan_done_Приседания_80_10_0
+    exercise = parts[2]
     weight = float(parts[3])
     reps = int(parts[4])
     
-    status = 'done' if action == 'done' else 'fail'
-    save_workout(tg_id, exercise_name, weight, reps, 1, status)
+    save_workout(tg_id, exercise, weight, reps, 1, action)
     
     emoji = "✅" if action == 'done' else "❌"
-    await query.edit_message_text(f"{emoji} {exercise_name}: {weight}кг × {reps} раз\nСтатус: {'Выполнил' if action == 'done' else 'Не выполнил'}")
+    await query.edit_message_text(f"{emoji} {exercise}: {weight}кг × {reps} раз\n{'Выполнил!' if action == 'done' else 'Не выполнил!'}")
     
     if action == 'done':
         await send_tren_video(query, "workout", "🔥 Тренируйся на максимум! 💀")
+    
     await show_plan(query, tg_id)
 
 async def show_plan(query, tg_id):
-    # Список упражнений для плана (можно вынести в отдельную таблицу)
-    exercises = [
-        ("Приседания", 80, 10),
-        ("Жим лежа", 60, 8),
-        ("Тяга штанги", 70, 10),
-        ("Жим гантелей", 40, 12),
-        ("Пресс скручивания", 0, 20)
-    ]
+    workouts = get_today_workouts(tg_id)
+    
+    if not workouts:
+        await query.edit_message_text("📋 Сегодня нет тренировок. Запиши первую, бро!")
+        return
     
     keyboard = []
-    for i, (ex, weight, reps) in enumerate(exercises):
-        callback_done = f"plan_done_{ex}_{weight}_{reps}"
-        callback_fail = f"plan_fail_{ex}_{weight}_{reps}"
-        keyboard.append([
-            InlineKeyboardButton(f"✅ {ex} — {weight}кг × {reps}", callback_data=callback_done),
-            InlineKeyboardButton(f"❌ Пропустить", callback_data=callback_fail)
-        ])
+    for i, (ex, weight, reps, sets, status) in enumerate(workouts):
+        if status == 'pending':
+            callback_done = f"plan_done_{ex}_{weight}_{reps}_{i}"
+            callback_fail = f"plan_fail_{ex}_{weight}_{reps}_{i}"
+            keyboard.append([
+                InlineKeyboardButton(f"✅ {ex} — {weight}кг × {reps}", callback_data=callback_done),
+                InlineKeyboardButton(f"❌ Пропустить", callback_data=callback_fail)
+            ])
+    
+    if not keyboard:
+        await query.edit_message_text("✅ Ты уже отметил все упражнения на сегодня! Отдыхай, бро!")
+        return
+    
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")])
     
     await query.edit_message_text(
@@ -432,40 +471,38 @@ async def show_plan(query, tg_id):
     )
 
 async def show_my_workouts(query, tg_id):
-    workouts = get_stats(tg_id)
+    workouts = get_all_workouts(tg_id)
     if not workouts:
         await query.edit_message_text("📋 Нет тренировок, бро!")
         return
     
     text = "📋 **Твои тренировки:**\n\n"
-    for i, w in enumerate(workouts[:20], 1):
-        status = "✅ Выполнил" if len(w) > 4 else "✅"
-        text += f"{i}. {w[0]} — {w[1]}кг × {w[2]} × {w[3]} ({status}) [{w[4][:10]}]\n"
+    for i, (ex, weight, reps, sets, status, date) in enumerate(workouts, 1):
+        status_text = "✅" if status == 'done' else "❌"
+        date_str = date[:10] if date else ""
+        text += f"{i}. {ex} — {weight}кг × {reps} × {sets} {status_text} [{date_str}]\n"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_progress(query, tg_id):
-    plan = get_plan_today(tg_id)
-    done = len([p for p in plan if p[3] == 'done'])
-    fail = len([p for p in plan if p[3] == 'fail'])
+    today = get_today_workouts(tg_id)
+    done = len([w for w in today if w[4] == 'done'])
+    fail = len([w for w in today if w[4] == 'fail'])
+    pending = len([w for w in today if w[4] == 'pending'])
     
-    text = "📊 **Мой прогресс:**\n\n"
+    text = "📊 **Твой прогресс:**\n\n"
     text += f"✅ Выполнено: {done} упражнений\n"
-    text += f"❌ Не выполнено: {fail} упражнений\n\n"
+    text += f"❌ Не выполнено: {fail} упражнений\n"
+    text += f"⏳ Ожидают: {pending} упражнений\n\n"
     
-    # Статистика за неделю
-    workouts = get_stats(tg_id)
-    if workouts:
-        max_weights = {}
-        for w in workouts:
-            ex = w[0]
-            weight = w[1]
-            if ex not in max_weights or weight > max_weights[ex]:
-                max_weights[ex] = weight
+    best = get_week_stats(tg_id)
+    if best:
         text += "🏋️ **Лучшие результаты за неделю:**\n"
-        for ex, weight in max_weights.items():
+        for ex, weight in best:
             text += f"• {ex}: {weight} кг\n"
+    else:
+        text += "🏋️ Нет данных за неделю, бро."
     
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -549,12 +586,6 @@ async def handle_message(update, context):
         except Exception as e:
             logging.error(f"Error in log_sets: {e}")
             await update.message.reply_text("Ошибка, попробуй снова.")
-        return
-
-    if step == "set_target":
-        update_cal_limit(tg_id, text)
-        del user_data[tg_id]
-        await update.message.reply_text(f"🎯 Цель: {text}\nТеперь иди к ней, бро!")
         return
 
     if step == "log_food":
