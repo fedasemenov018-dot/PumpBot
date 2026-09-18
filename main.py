@@ -2,7 +2,7 @@ import logging
 import os
 import sqlite3
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -23,11 +23,15 @@ TREN_VIDEOS = {
 async def send_tren_video(update, video_type, caption):
     video_link = TREN_VIDEOS.get(video_type)
     if video_link:
-        await update.message.reply_video(
-            video=video_link,
-            caption=caption,
-            supports_streaming=True
-        )
+        try:
+            await update.message.reply_video(
+                video=video_link,
+                caption=caption,
+                supports_streaming=True
+            )
+        except Exception as e:
+            logging.error(f"Video send error: {e}")
+            await update.message.reply_text(caption)
     else:
         await update.message.reply_text(caption)
 
@@ -146,6 +150,22 @@ def init_db():
         grams INTEGER,
         date DATETIME
     )''')
+    # === НОВЫЕ ТАБЛИЦЫ ===
+    c.execute('''CREATE TABLE IF NOT EXISTS streaks (
+        user_id INTEGER PRIMARY KEY,
+        current_streak INTEGER DEFAULT 0,
+        max_streak INTEGER DEFAULT 0,
+        last_workout_date TEXT,
+        total_workouts INTEGER DEFAULT 0,
+        level INTEGER DEFAULT 1,
+        xp INTEGER DEFAULT 0
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_program (
+        user_id INTEGER PRIMARY KEY,
+        program_name TEXT,
+        current_day INTEGER DEFAULT 0,
+        started_at DATETIME
+    )''')
     conn.commit()
     conn.close()
 
@@ -201,6 +221,62 @@ def get_food_log(tg_id):
     conn.close()
     return foods
 
+# === НОВЫЕ ФУНКЦИИ: СТРИК И XP ===
+def update_streak_and_xp(tg_id, xp_gain=50):
+    """Обновляет стрик и XP после тренировки. Возвращает dict с результатом."""
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE tg_id = ?", (tg_id,))
+    user = c.fetchone()
+    if not user:
+        conn.close()
+        return None
+    user_id = user[0]
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    c.execute("SELECT current_streak, max_streak, last_workout_date, xp, level, total_workouts FROM streaks WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+
+    if not row:
+        c.execute("INSERT INTO streaks (user_id, current_streak, max_streak, last_workout_date, xp, level, total_workouts) VALUES (?, 1, 1, ?, ?, 1, 1)",
+                  (user_id, today, xp_gain))
+        conn.commit()
+        conn.close()
+        return {"streak": 1, "max_streak": 1, "level": 1, "xp": xp_gain, "level_up": False, "total": 1}
+
+    current, max_s, last_date, xp, level, total = row
+
+    if last_date == today:
+        conn.close()
+        return {"streak": current, "max_streak": max_s, "level": level, "xp": xp, "level_up": False, "total": total, "already": True}
+
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    if last_date == yesterday:
+        current += 1
+    else:
+        current = 1
+
+    max_s = max(max_s, current)
+    xp += xp_gain
+    total += 1
+    new_level = xp // 500 + 1
+    level_up = new_level > level
+    level = new_level
+
+    c.execute("UPDATE streaks SET current_streak = ?, max_streak = ?, last_workout_date = ?, xp = ?, level = ?, total_workouts = ? WHERE user_id = ?",
+              (current, max_s, today, xp, level, total, user_id))
+    conn.commit()
+    conn.close()
+    return {"streak": current, "max_streak": max_s, "level": level, "xp": xp, "level_up": level_up, "total": total}
+
+def get_streak_info(tg_id):
+    conn = sqlite3.connect("pumpbot.db")
+    c = conn.cursor()
+    c.execute("SELECT current_streak, max_streak, level, xp, total_workouts FROM streaks WHERE user_id = (SELECT id FROM users WHERE tg_id = ?)", (tg_id,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
 def save_workout(tg_id, exercise, weight, reps, sets, status='done'):
     conn = sqlite3.connect("pumpbot.db")
     c = conn.cursor()
@@ -215,7 +291,13 @@ def save_workout(tg_id, exercise, weight, reps, sets, status='done'):
             c.execute("INSERT OR REPLACE INTO achievements (user_id, exercise, max_weight, date) VALUES (?, ?, ?, ?)",
                       (user[0], exercise, weight, datetime.now()))
         conn.commit()
+        conn.close()
+        # Начисляем XP и стрик только за выполненные тренировки
+        if status == 'done':
+            return update_streak_and_xp(tg_id, xp_gain=50)
+        return None
     conn.close()
+    return None
 
 def get_today_workouts(tg_id):
     conn = sqlite3.connect("pumpbot.db")
@@ -279,6 +361,41 @@ CHALLENGES = [
     "100 выпадов на каждую ногу. 🦵"
 ]
 
+# === НОВОЕ: УРОВНИ И ТИТУЛЫ ===
+LEVEL_TITLES = {
+    1: "🥚 Новичок",
+    2: "🏃 Бегун",
+    3: "💪 Качок",
+    4: "🔥 Зверь",
+    5: "🦍 Горилла",
+    6: "👹 Монстр",
+    7: "🐉 Дракон",
+    8: "⚡ Легенда"
+}
+
+def get_level_title(level):
+    return LEVEL_TITLES.get(level, "⚡ Легенда")
+
+# === НОВОЕ: СОВЕТЫ ДНЯ ===
+DAILY_TIPS = [
+    "💡 **Совет:** Пей 30 мл воды на каждый кг веса. При 70 кг — 2.1 литра в день.",
+    "💡 **Совет:** Спи 7-9 часов. Мышцы растут во сне, а не в зале.",
+    "💡 **Совет:** Ешь 1.6-2 г белка на кг веса. Белок — стройматериал для мышц.",
+    "💡 **Совет:** Разминайся 5-10 минут перед тренировкой — снижает риск травм на 40%.",
+    "💡 **Совет:** Прогрессия нагрузки важнее идеальной техники. Добавляй +2.5 кг в неделю.",
+    "💡 **Совет:** Не тренируй одну группу мышц чаще 2-3 раз в неделю. Мышцам нужен отдых.",
+    "💡 **Совет:** Завтрак с белком (яйца, творог) снижает тягу к сладкому весь день.",
+    "💡 **Совет:** Кардио после силовой — жиросжигание эффективнее на 20%.",
+    "💡 **Совет:** 80% результата — это питание. Тренировка лишь запускает рост.",
+    "💡 **Совет:** Веди дневник — самый недооценённый инструмент прогресса.",
+    "💡 **Совет:** Приседай глубоко — это лучшее упражнение для всего тела.",
+    "💡 **Совет:** Пей воду до, во время и после тренировки. Обезвоживание = -20% силы.",
+]
+
+def get_tip_of_day():
+    day_index = datetime.now().day % len(DAILY_TIPS)
+    return DAILY_TIPS[day_index]
+
 # === БОТ ===
 user_data = {}
 
@@ -301,7 +418,9 @@ async def show_main_menu(update, context, user=None):
     keyboard = [
         [InlineKeyboardButton("🏋️ Тренировка", callback_data="training")],
         [InlineKeyboardButton("📊 Мой прогресс", callback_data="progress")],
+        [InlineKeyboardButton("🏆 Мой уровень", callback_data="my_level")],
         [InlineKeyboardButton("🍔 Питание", callback_data="calories")],
+        [InlineKeyboardButton("💡 Совет дня", callback_data="tip_of_day")],
         [InlineKeyboardButton("❓ Помощь", callback_data="help")]
     ]
     text = f"Чё качаем сегодня, {user[2] if user else 'бро'}? 💪"
@@ -345,6 +464,16 @@ async def button_handler(update, context):
 
     if data == "progress":
         await show_progress(query, tg_id)
+        return
+
+    if data == "my_level":
+        await show_level(query, tg_id)
+        return
+
+    if data == "tip_of_day":
+        tip = get_tip_of_day()
+        keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+        await query.edit_message_text(tip, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return
 
     if data == "log":
@@ -400,7 +529,9 @@ async def button_handler(update, context):
             "❓ **Помощь**\n\n"
             "🏋️ **Тренировка** — записать тренировку или посмотреть план.\n"
             "📊 **Мой прогресс** — статистика и рекорды.\n"
-            "🍔 **Питание** — счетчик калорий.\n\n"
+            "🏆 **Мой уровень** — стрик, XP, титул.\n"
+            "🍔 **Питание** — счетчик калорий.\n"
+            "💡 **Совет дня** — ежедневная подсказка.\n\n"
             "По всем вопросам пиши в поддержку:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
@@ -409,6 +540,42 @@ async def button_handler(update, context):
 
     if data == "back_to_menu":
         await show_main_menu(update, context)
+
+async def show_level(query, tg_id):
+    info = get_streak_info(tg_id)
+    if not info:
+        await query.edit_message_text(
+            "🏆 Пока нет данных, бро!\nЗапиши первую тренировку, чтобы начать качать уровень. 💪",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]])
+        )
+        return
+    
+    streak, max_streak, level, xp, total = info
+    title = get_level_title(level)
+    next_level_xp = level * 500
+    progress = int((xp % 500) / 500 * 100)
+    bar = "▓" * (progress // 5) + "░" * (20 - progress // 5)
+    
+    fire = "🔥" * min(streak, 7)
+    
+    text = f"🏆 **Твой уровень:**\n\n"
+    text += f"{title}\n"
+    text += f"📊 Уровень: **{level}**\n"
+    text += f"⭐ XP: {xp} / {next_level_xp}\n"
+    text += f"{bar} {progress}%\n\n"
+    text += f"🔥 Стрик: **{streak}** дней {fire}\n"
+    text += f"🏅 Максимум: {max_streak} дней\n"
+    text += f"💪 Всего тренировок: {total}\n\n"
+    
+    if streak >= 7:
+        text += "🔥 Ты в ударе! Не останавливайся!"
+    elif streak >= 3:
+        text += "💪 Хороший стрик! Продолжай!"
+    else:
+        text += "🚀 Тренируйся каждый день — стрик растёт!"
+    
+    keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_plan_action(query, tg_id, data, action):
     parts = data.split("_")
@@ -420,18 +587,29 @@ async def handle_plan_action(query, tg_id, data, action):
     weight = float(parts[3])
     reps = int(parts[4])
     
-    save_workout(tg_id, exercise, weight, reps, 1, action)
+    result = save_workout(tg_id, exercise, weight, reps, 1, action)
     
     emoji = "✅" if action == 'done' else "❌"
     keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
     
-    await query.edit_message_text(
-        f"{emoji} {exercise}: {weight}кг × {reps} раз\n{'Выполнил!' if action == 'done' else 'Не выполнил!'}",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    text = f"{emoji} {exercise}: {weight}кг × {reps} раз\n{'Выполнил!' if action == 'done' else 'Не выполнил!'}"
+    
+    if action == 'done' and result:
+        text += f"\n\n🔥 Стрик: {result['streak']} дней\n⭐ +50 XP | Уровень: {result['level']}"
+        if result.get('level_up'):
+            text += f"\n\n🎉 НОВЫЙ УРОВЕНЬ! {get_level_title(result['level'])}"
+    
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     if action == 'done':
-        await send_tren_video(query, "workout", "🔥 Тренируйся на максимум! 💀")
+        try:
+            await query.message.reply_video(
+                video=TREN_VIDEOS["workout"],
+                caption="🔥 Тренируйся на максимум! 💀",
+                supports_streaming=True
+            )
+        except Exception as e:
+            logging.error(f"Video error: {e}")
 
 async def show_plan(query, tg_id):
     workouts = get_today_workouts(tg_id)
@@ -581,14 +759,30 @@ async def handle_message(update, context):
             exercise = user_data[tg_id]["exercise"]
             weight = user_data[tg_id]["weight"]
             reps = user_data[tg_id]["reps"]
-            save_workout(tg_id, exercise, weight, reps, sets, 'done')
+            result = save_workout(tg_id, exercise, weight, reps, sets, 'done')
             del user_data[tg_id]
+            
+            text_reply = f"✅ **{exercise}: {weight}кг × {reps} × {sets}**\n\n"
+            
+            if result:
+                text_reply += f"🔥 Стрик: **{result['streak']} дней**\n"
+                text_reply += f"⭐ +50 XP | Уровень: **{result['level']}**\n"
+                if result.get('level_up'):
+                    text_reply += f"\n🎉 **НОВЫЙ УРОВЕНЬ!** {get_level_title(result['level'])}"
+                if result['streak'] in [3, 7, 14, 30, 50, 100]:
+                    text_reply += f"\n🏆 **СТРИК {result['streak']} ДНЕЙ!** Ты машина!"
+            
             keyboard = [[InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_menu")]]
-            await update.message.reply_text(
-                f"✅ {exercise}: {weight}кг × {reps} × {sets}\nКрасава, бро! 👊",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            await send_tren_video(update, "workout", "🔥 Тренируйся на максимум! 💀")
+            await update.message.reply_text(text_reply, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            
+            try:
+                await update.message.reply_video(
+                    video=TREN_VIDEOS["workout"],
+                    caption="🔥 Тренируйся на максимум! 💀",
+                    supports_streaming=True
+                )
+            except Exception as e:
+                logging.error(f"Video error: {e}")
         except Exception as e:
             logging.error(f"Error in log_sets: {e}")
             await update.message.reply_text("Ошибка, попробуй снова.")
@@ -623,7 +817,14 @@ async def handle_message(update, context):
                 f"✅ {product} — {total_cal} ккал ({grams}г)\nЖри, бро! 🍖",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-            await send_tren_video(update, "food", "🍖 Жри, бро! Это топливо для мышц!")
+            try:
+                await update.message.reply_video(
+                    video=TREN_VIDEOS["food"],
+                    caption="🍖 Жри, бро! Это топливо для мышц!",
+                    supports_streaming=True
+                )
+            except Exception as e:
+                logging.error(f"Video error: {e}")
         except Exception as e:
             logging.error(f"Error in food_select: {e}")
             await update.message.reply_text("Введи число, бро.")
