@@ -27,7 +27,23 @@ def adapt(q): return q.replace("?", "%s") if USE_PG else q
 def today_clause(): return "date >= CURRENT_DATE" if USE_PG else "date >= datetime('now', 'start of day')"
 def week_ago_clause(): return "date >= CURRENT_DATE - INTERVAL '7 days'" if USE_PG else "date >= datetime('now', '-7 days')"
 
-# === МОТИВАЦИОННЫЕ ВИДЕО ===
+# === ФОТО ===
+PHOTO_TODAY = [
+    "https://upload.wikimedia.org/wikipedia/commons/3/3b/Indian_Bodybuilder.JPG",
+    "https://upload.wikimedia.org/wikipedia/commons/b/b0/David_the_bodybuilder.jpg",
+]
+PHOTO_LEGENDS = {
+    "ronnie": "https://upload.wikimedia.org/wikipedia/commons/f/fb/Ronnie_Coleman_8_x_Mr_Olympia_-_2009_-_5.png",
+    "dorian": "https://upload.wikimedia.org/wikipedia/commons/d/db/Dorian_yates.png",
+    "jay": "https://upload.wikimedia.org/wikipedia/commons/0/07/JAY_CUTLER_%28US%29.jpg",
+}
+PHOTO_EXERCISE = {
+    "chest": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Incline-bench-press-2-1.png",
+    "back": "https://upload.wikimedia.org/wikipedia/commons/4/4a/Deadlift-phase_1.JPG",
+    "legs": "https://upload.wikimedia.org/wikipedia/commons/4/47/Wprf-POWERLIFTING.jpg",
+}
+PHOTO_FOOD = "https://upload.wikimedia.org/wikipedia/commons/b/b6/Good_Food_In_Dishes_-_NCI_Visuals_Online.jpg"
+
 MOTIVATION_VIDEOS = [
     "https://attachments-cdn-s.coub.com/coub_storage/coub/simple/cw_file/20d95255492/696ba9cdde3eeff69c1a7/muted_mp4_big_size_1597674723_muted_big.mp4",
     "https://attachments-cdn-s.coub.com/coub_storage/coub/simple/cw_file/0e5db8ec074/bb1e23c8fa43d455fc8f4/muted_mp4_big_size_1630863913_muted_big.mp4",
@@ -373,95 +389,96 @@ PROGRAMS = {
     }
 }
 
-# === ТРЕНИРОВКИ ЛЕГЕНД ===
+# === ТРЕНИРОВКИ ЛЕГЕНД (точные данные) ===
 LEGENDS = {
     "ronnie": {
         "name": "🏆 Ронни Коулмэн",
-        "desc": "8x Мистер Олимпия. Эра масс и тяжестей.",
+        "desc": "8x Мистер Олимпия (1998-2005). Эра массы и тяжестей. «Light weight, baby!»",
         "chest": {
-            "title": "Грудь и трицепс",
+            "title": "Грудь + Трицепс",
             "exercises": [
-                "Жим гантелей лежа — 4×12",
-                "Жим гантелей на наклонной — 4×10",
-                "Жим в тренажере — 3×12",
-                "Отжимания на брусьях (с весом) — 3×10",
-                "Французский жим — 3×12"
+                "Жим лёжа — 4×8-12",
+                "Жим на наклонной — 4×8-12",
+                "Жим гантелей — 3×8-12",
+                "Разводка гантелей — 3×12-15",
+                "Французский жим — 3×10-12"
             ]
         },
         "back": {
-            "title": "Спина (толщина)",
+            "title": "Спина + Бицепс",
             "exercises": [
-                "Становая тяга — 4×8",
-                "Тяга штанги в наклоне — 4×10",
-                "Тяга Т-грифа — 3×12",
-                "Тяга гантели одной рукой — 3×10"
+                "Становая тяга — 3×4-8",
+                "Тяга штанги в наклоне — 4×8-12",
+                "Тяга Т-грифа — 4×8-12",
+                "Тяга блока к груди — 3×10-12",
+                "Подъём штанги на бицепс — 3×10-12"
             ]
         },
         "legs": {
-            "title": "Ноги (квадрицепс)",
+            "title": "Ноги",
             "exercises": [
-                "Приседания — 5×10",
-                "Жим ногами — 4×12",
-                "Выпады с гантелями — 3×20 шагов",
-                "Разгибания ног — 4×15"
+                "Приседания — 5×4-8",
+                "Жим ногами — 4×8-12",
+                "Выпады с гантелями — 3×12-15",
+                "Разгибания ног — 3×12-15",
+                "Сгибания ног — 3×12-15"
             ]
         }
     },
     "dorian": {
         "name": "🏆 Дориан Йейтс",
-        "desc": "6x Мистер Олимпия. Эра интенсивности и отказов.",
+        "desc": "6x Мистер Олимпия (1992-1997). Пионер HIT — 1 подход до отказа.",
         "chest": {
-            "title": "Грудь (низкий объем, высокий отказ)",
+            "title": "Грудь + Бицепс (HIT)",
             "exercises": [
-                "Жим лежа на наклонной — 1×8-10 (до отказа)",
-                "Жим в тренажере Hammer — 1×8-10 (до отказа)",
-                "Разводка гантелей на наклонной — 1×10 (до отказа)",
-                "Кроссовер — 1×12 (до отказа)"
+                "Жим лёжа на наклонной — 1×12 разминка, 1×8-10 до отказа",
+                "Жим в тренажёре Hammer — 1×8-10 до отказа",
+                "Разводка гантелей — 1×10 до отказа",
+                "Подъём штанги на бицепс — 1×6-8 до отказа"
             ]
         },
         "back": {
-            "title": "Спина (кровь и кишки)",
+            "title": "Спина (Blood & Guts)",
             "exercises": [
-                "Тяга штанги в наклоне — 2×12-15 (разминка)",
-                "Тяга блока к груди — 1×8-10 (до отказа)",
-                "Тяга гантели одной рукой — 1×8-10 (до отказа)",
-                "Тяга нижнего блока — 1×10 (до отказа)",
-                "Шраги со штангой — 1×10 (до отказа)"
+                "Тяга верхнего блока — 1×15 разминка, 1×8-10 до отказа",
+                "Тяга штанги в наклоне — 2×12-15 разминка, 1×8-10 до отказа",
+                "Тяга гантели одной рукой — 1×8-10 до отказа",
+                "Шраги со штангой — 1×10 до отказа"
             ]
         },
         "legs": {
-            "title": "Ноги (база + отказ)",
+            "title": "Ноги (HIT)",
             "exercises": [
-                "Приседания — 1×8-10 (до отказа)",
-                "Жим ногами — 1×10 (до отказа)",
-                "Разгибания ног — 1×12 (до отказа)",
-                "Сгибания ног — 1×12 (до отказа)"
+                "Приседания — 1×8-10 до отказа",
+                "Жим ногами — 1×10 до отказа",
+                "Разгибания ног — 1×12 до отказа",
+                "Сгибания ног — 1×12 до отказа"
             ]
         }
     },
     "jay": {
         "name": "🏆 Джей Катлер",
-        "desc": "4x Мистер Олимпия. Эра пирамид и объема.",
+        "desc": "4x Мистер Олимпия (2006-2007, 2009-2010). Король объёма.",
         "chest": {
-            "title": "Грудь (пирамида)",
+            "title": "Грудь + Икры",
             "exercises": [
-                "Жим в тренажере Hammer — 2×15 (разминка), 3×10-12 (пирамида)",
-                "Жим гантелей лежа — 3×10-12",
-                "Разводка гантелей на наклонной — 3×12",
+                "Жим в тренажёре Hammer — 3×12,10,8",
+                "Жим гантелей лёжа — 3×10-12",
+                "Разводка гантелей — 3×12",
                 "Кроссовер — 3×15"
             ]
         },
         "back": {
-            "title": "Спина (ширина и толщина)",
+            "title": "Спина",
             "exercises": [
-                "Тяга верхнего блока — 4×10-12",
-                "Тяга штанги в наклоне — 3×10",
-                "Тяга нижнего блока — 3×12",
-                "Шраги — 3×12"
+                "Становая тяга — 3×12",
+                "Тяга штанги в наклоне — 3×12",
+                "Подтягивания — 3×12",
+                "Тяга блока к груди — 3×12"
             ]
         },
         "legs": {
-            "title": "Ноги (объем)",
+            "title": "Ноги + Икры",
             "exercises": [
                 "Приседания — 4×10-12",
                 "Жим ногами — 4×12",
@@ -760,9 +777,9 @@ async def button_handler(update, context):
     # === ЛЕГЕНДЫ ===
     if data == "legends_menu":
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🏆 Ронни Коулмэн", callback_data="legend_ronnie")],
-            [InlineKeyboardButton("🏆 Дориан Йейтс", callback_data="legend_dorian")],
-            [InlineKeyboardButton("🏆 Джей Катлер", callback_data="legend_jay")],
+            [InlineKeyboardButton("🏆 Ронни Коулмэн (8x)", callback_data="legend_ronnie")],
+            [InlineKeyboardButton("🏆 Дориан Йейтс (6x)", callback_data="legend_dorian")],
+            [InlineKeyboardButton("🏆 Джей Катлер (4x)", callback_data="legend_jay")],
             [InlineKeyboardButton("🔙 Назад", callback_data="train_menu")]
         ])
         await q.edit_message_text(
@@ -775,15 +792,24 @@ async def button_handler(update, context):
         legend = LEGENDS.get(legend_key)
         if not legend:
             await q.edit_message_text("Не найдено.", reply_markup=back_kb()); return
+
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Грудь", callback_data=f"legendwork_{legend_key}_chest")],
-            [InlineKeyboardButton("Спина", callback_data=f"legendwork_{legend_key}_back")],
-            [InlineKeyboardButton("Ноги", callback_data=f"legendwork_{legend_key}_legs")],
+            [InlineKeyboardButton("💪 Грудь", callback_data=f"legendwork_{legend_key}_chest")],
+            [InlineKeyboardButton("🔙 Спина", callback_data=f"legendwork_{legend_key}_back")],
+            [InlineKeyboardButton("🦵 Ноги", callback_data=f"legendwork_{legend_key}_legs")],
             [InlineKeyboardButton("🔙 Назад", callback_data="legends_menu")]
         ])
-        await q.edit_message_text(
-            f"{legend['name']}\n_{legend['desc']}_\n\nВыбери группу мышц:",
-            reply_markup=kb, parse_mode='Markdown')
+        caption = f"{legend['name']}\n\n_{legend['desc']}_\n\nВыбери группу мышц:"
+        photo_url = PHOTO_LEGENDS.get(legend_key)
+
+        if photo_url:
+            try:
+                await q.message.reply_photo(photo=photo_url, caption=caption, reply_markup=kb, parse_mode='Markdown')
+                await q.message.delete()
+                return
+            except Exception as e:
+                logging.error(f"Legend photo error: {e}")
+        await q.edit_message_text(caption, reply_markup=kb, parse_mode='Markdown')
         return
 
     if data.startswith("legendwork_"):
@@ -794,14 +820,25 @@ async def button_handler(update, context):
         workout = legend.get(muscle) if legend else None
         if not workout:
             await q.edit_message_text("Тренировка не найдена.", reply_markup=back_kb()); return
+
         txt = f"{legend['name']} — **{workout['title']}**\n\n"
         for ex in workout['exercises']:
             txt += f"• {ex}\n"
         txt += "\n🔥 Вперёд, брат!"
+
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔥 Мотивация", callback_data=f"legendvideo_{legend_key}")],
             [InlineKeyboardButton("🔙 К группам", callback_data=f"legend_{legend_key}")]
         ])
+
+        photo_url = PHOTO_EXERCISE.get(muscle)
+        if photo_url:
+            try:
+                await q.message.reply_photo(photo=photo_url, caption=txt, reply_markup=kb, parse_mode='Markdown')
+                await q.message.delete()
+                return
+            except Exception as e:
+                logging.error(f"Exercise photo error: {e}")
         await q.edit_message_text(txt, reply_markup=kb, parse_mode='Markdown')
         return
 
@@ -827,7 +864,7 @@ async def rest_timer_task(bot, chat_id, seconds):
     try: await bot.send_message(chat_id=chat_id, text=f"⏰ {seconds} сек прошло! Следующий подход 💪")
     except Exception as e: logging.error(f"Timer: {e}")
 
-# ============ ЭКРАН «СЕГОДНЯ» ============
+# ============ ЭКРАН «СЕГОДНЯ» (С ФОТО) ============
 async def show_today(q, tg_id):
     user = get_user(tg_id)
     if not user:
@@ -865,6 +902,7 @@ async def show_today(q, tg_id):
     txt += f"\n🍔 Калории: **{eaten}/{limit}** (осталось {rem})\n"
     txt += f"💪 Тренировок сегодня: **{done_today}**\n"
     txt += f"\n{get_tip_of_day()}"
+
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Записать тренировку", callback_data="log")],
         [InlineKeyboardButton("🍔 Записать еду", callback_data="log_food")],
@@ -872,7 +910,14 @@ async def show_today(q, tg_id):
         [InlineKeyboardButton("🔄 Обновить", callback_data="today"),
          InlineKeyboardButton("🔙 В меню", callback_data="back_to_menu")]
     ])
-    await q.edit_message_text(txt, reply_markup=kb, parse_mode='Markdown')
+
+    photo_url = random.choice(PHOTO_TODAY)
+    try:
+        await q.message.reply_photo(photo=photo_url, caption=txt, reply_markup=kb, parse_mode='Markdown')
+        await q.message.delete()
+    except Exception as e:
+        logging.error(f"Today photo error: {e}")
+        await q.edit_message_text(txt, reply_markup=kb, parse_mode='Markdown')
 
 # ============ СТАРЫЕ ЭКРАНЫ ============
 async def show_level(query, tg_id):
@@ -1140,7 +1185,12 @@ async def bju_handler(update, context):
         txt = f"🥗 **Твоя норма ({goal_ru}):**\n\n"
         txt += f"🔥 Калории: **{cal} ккал**\n🥩 Белки: **{prot} г**\n🧈 Жиры: **{fat} г**\n🍞 Углеводы: **{carbs} г**\n\n💧 Вода: **{water} л**"
         del user_data[tg_id]
-        await q.edit_message_text(txt, reply_markup=back_kb(), parse_mode='Markdown')
+        try:
+            await q.message.reply_photo(photo=PHOTO_FOOD, caption=txt, reply_markup=back_kb(), parse_mode='Markdown')
+            await q.message.delete()
+        except Exception as e:
+            logging.error(f"BJU photo error: {e}")
+            await q.edit_message_text(txt, reply_markup=back_kb(), parse_mode='Markdown')
 
 # === РАСПИСАНИЕ ===
 async def morning_reminder(context):
