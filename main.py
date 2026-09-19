@@ -1,11 +1,10 @@
 import logging
 import os
 import sqlite3
-import random
 import asyncio
 from datetime import datetime, timedelta, time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not BOT_TOKEN:
@@ -31,7 +30,6 @@ def _init_pool():
             _pg_pool = None
 
 class ConnWrapper:
-    """Обёртка: возвращает соединение в пул при close()."""
     def __init__(self, conn, from_pool=False):
         self._conn = conn
         self._from_pool = from_pool
@@ -56,9 +54,6 @@ def get_conn():
 
 def adapt(q):
     return q.replace("?", "%s") if USE_PG else q
-
-def today_clause(col="date"):
-    return f"{col} >= CURRENT_DATE" if USE_PG else f"{col} >= datetime('now', 'start of day')"
 
 def week_ago_clause(col="date"):
     return f"{col} >= CURRENT_DATE - INTERVAL '7 days'" if USE_PG else f"{col} >= datetime('now', '-7 days')"
@@ -128,6 +123,18 @@ def search_food(q):
     return [(n, c) for n, c in FOOD_DB.items() if q in n][:10]
 
 # ============ БД: СХЕМА + МИГРАЦИИ ============
+def _safe_add_column(cursor, table, column, definition):
+    try:
+        if USE_PG:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+        else:
+            cursor.execute(f"PRAGMA table_info({table})")
+            cols = [r[1] for r in cursor.fetchall()]
+            if column not in cols:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    except Exception as e:
+        logging.warning(f"Migration skip {table}.{column}: {e}")
+
 def init_db():
     conn = get_conn(); c = conn.cursor()
     if USE_PG:
@@ -149,7 +156,6 @@ def init_db():
         last_workout_date TEXT, total_workouts INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1, xp INTEGER DEFAULT 0)''')
 
-    # ---- миграции (добавляем колонки, если их нет) ----
     _safe_add_column(c, "users", "tz_offset", "INTEGER DEFAULT 0")
     _safe_add_column(c, "users", "remind_morning", "INTEGER DEFAULT 1")
     _safe_add_column(c, "users", "remind_evening", "INTEGER DEFAULT 1")
@@ -157,19 +163,6 @@ def init_db():
     _safe_add_column(c, "users", "evening_hour", "INTEGER DEFAULT 20")
 
     conn.commit(); conn.close()
-
-def _safe_add_column(cursor, table, column, definition):
-    """Добавляет колонку, если её нет. Работает в PG и SQLite."""
-    try:
-        if USE_PG:
-            cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
-        else:
-            cursor.execute(f"PRAGMA table_info({table})")
-            cols = [r[1] for r in cursor.fetchall()]
-            if column not in cols:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-    except Exception as e:
-        logging.warning(f"Migration skip {table}.{column}: {e}")
 
 # ============ ПОЛЬЗОВАТЕЛЬ ============
 def get_user(tg_id):
@@ -184,7 +177,7 @@ def add_user(tg_id, name, goal, level):
         c.execute(adapt("UPDATE users SET name = ?, goal = ?, level = ? WHERE tg_id = ?"), (name, goal, level, tg_id))
     else:
         c.execute(adapt("INSERT INTO users (tg_id, name, goal, level, created_at) VALUES (?, ?, ?, ?, ?)"),
-                  (tg_id, name, goal, level, datetime.now()))
+                  (tg_id, name, goal, level, datetime.utcnow()))
     conn.commit(); conn.close()
 
 def update_cal_limit(tg_id, limit):
@@ -203,14 +196,18 @@ def update_reminders(tg_id, morning, evening):
               (1 if morning else 0, 1 if evening else 0, tg_id))
     conn.commit(); conn.close()
 
-def get_tz_offset(tg_id):
+def get_user_settings(tg_id):
     conn = get_conn(); c = conn.cursor()
-    c.execute(adapt("SELECT tz_offset FROM users WHERE tg_id = ?"), (tg_id,))
+    c.execute(adapt("SELECT tz_offset, remind_morning, remind_evening FROM users WHERE tg_id = ?"), (tg_id,))
     r = c.fetchone(); conn.close()
-    return r[0] if r and r[0] is not None else 0
+    if not r:
+        return (0, 1, 1)
+    return (r[0] or 0, r[1] if r[1] is not None else 1, r[2] if r[2] is not None else 1)
+
+def get_tz_offset(tg_id):
+    return get_user_settings(tg_id)[0]
 
 def local_now(tg_id):
-    """Локальное время юзера (naive datetime)."""
     return datetime.utcnow() + timedelta(hours=get_tz_offset(tg_id))
 
 def local_today_str(tg_id):
@@ -227,28 +224,22 @@ def save_food(tg_id, product, cal, grams):
         conn.commit()
     conn.close()
 
-def get_food_today(tg_id):
-    # границы локального дня в UTC
+def _local_day_bounds_utc(tg_id):
     off = get_tz_offset(tg_id)
     now_local = datetime.utcnow() + timedelta(hours=off)
     start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     end_local = start_local + timedelta(days=1)
-    start_utc = start_local - timedelta(hours=off)
-    end_utc = end_local - timedelta(hours=off)
+    return (start_local - timedelta(hours=off), end_local - timedelta(hours=off))
 
+def get_food_today(tg_id):
+    start_utc, end_utc = _local_day_bounds_utc(tg_id)
     conn = get_conn(); c = conn.cursor()
     c.execute(adapt("SELECT SUM(calories) FROM food_log WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= ? AND date < ?"),
               (tg_id, start_utc, end_utc))
     t = c.fetchone()[0]; conn.close(); return t or 0
 
 def get_food_log(tg_id):
-    off = get_tz_offset(tg_id)
-    now_local = datetime.utcnow() + timedelta(hours=off)
-    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_local = start_local + timedelta(days=1)
-    start_utc = start_local - timedelta(hours=off)
-    end_utc = end_local - timedelta(hours=off)
-
+    start_utc, end_utc = _local_day_bounds_utc(tg_id)
     conn = get_conn(); c = conn.cursor()
     c.execute(adapt("SELECT product, calories, grams FROM food_log WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= ? AND date < ? ORDER BY date DESC"),
               (tg_id, start_utc, end_utc))
@@ -274,7 +265,6 @@ def update_streak_and_xp(tg_id, xp_gain=50):
     if last == today:
         conn.close()
         return {"streak": cur, "max_streak": mx, "level": lvl, "xp": xp, "level_up": False, "total": tot, "already": True}
-    # вчера по локальному времени
     yest = (local_now(tg_id) - timedelta(days=1)).strftime("%Y-%m-%d")
     cur = cur + 1 if last == yest else 1
     mx = max(mx, cur); xp += xp_gain; tot += 1
@@ -314,11 +304,7 @@ def save_workout(tg_id, exercise, weight, reps, sets, status='done'):
     return None
 
 def get_today_workouts(tg_id):
-    off = get_tz_offset(tg_id)
-    now_local = datetime.utcnow() + timedelta(hours=off)
-    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    start_utc = start_local - timedelta(hours=off)
-
+    start_utc, _ = _local_day_bounds_utc(tg_id)
     conn = get_conn(); c = conn.cursor()
     c.execute(adapt("SELECT exercise, weight, reps, sets, status FROM workouts WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND date >= ? ORDER BY date DESC"),
               (tg_id, start_utc))
@@ -335,18 +321,21 @@ def get_all_workouts(tg_id):
     w = c.fetchall(); conn.close(); return w
 
 def get_last_workout_for_exercise(tg_id, exercise):
-    """Последняя запись по упражнению (для автоподстановки)."""
     conn = get_conn(); c = conn.cursor()
     c.execute(adapt("SELECT weight, reps, sets FROM workouts WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND LOWER(exercise) = LOWER(?) ORDER BY date DESC LIMIT 1"),
               (tg_id, exercise))
     r = c.fetchone(); conn.close(); return r
 
 def get_exercise_history(tg_id, exercise, limit=15):
-    """История по упражнению (для графика)."""
     conn = get_conn(); c = conn.cursor()
     c.execute(adapt("SELECT weight, reps, date FROM workouts WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) AND LOWER(exercise) = LOWER(?) AND status = 'done' ORDER BY date DESC LIMIT ?"),
               (tg_id, exercise, limit))
     r = c.fetchall(); conn.close(); return r
+
+def get_all_exercises(tg_id):
+    conn = get_conn(); c = conn.cursor()
+    c.execute(adapt("SELECT DISTINCT exercise FROM workouts WHERE user_id = (SELECT id FROM users WHERE tg_id = ?) ORDER BY exercise"), (tg_id,))
+    r = c.fetchall(); conn.close(); return [x[0] for x in r]
 
 # ============ УРОВНИ ============
 LEVEL_TITLES = {1: "🥚 Новичок", 2: "🏃 Бегун", 3: "💪 Качок", 4: "🔥 Зверь",
@@ -391,8 +380,7 @@ def get_progression(weight, reps):
 def calc_1rm(weight, reps):
     if reps == 1:
         return weight
-    one_rm = weight * (1 + reps / 30)
-    return round(one_rm, 1)
+    return round(weight * (1 + reps / 30), 1)
 
 def get_1rm_table(one_rm):
     return {
@@ -437,8 +425,7 @@ def get_tip_of_day():
     return DAILY_TIPS[datetime.now().day % len(DAILY_TIPS)]
 
 # ============ ASCII-ГРАФИК ============
-def ascii_chart(values, labels, width=20):
-    """Простой горизонтальный ASCII-график. values — числа, labels — подписи."""
+def ascii_chart(values, labels, width=15):
     if not values:
         return ""
     mn, mx = min(values), max(values)
@@ -518,13 +505,4 @@ async def button_handler(update, context):
               [InlineKeyboardButton("📋 История", callback_data="my_workouts")],
               [InlineKeyboardButton("📈 График упражнения", callback_data="ex_graph")],
               [InlineKeyboardButton("🔙 Назад", callback_data="back_to_menu")]]
-        await q.edit_message_text("🏋️ Тренировка:", reply_markup=InlineKeyboardMarkup(kb))
-        return
-
-    if data == "progress":
-        await show_progress(q, tg_id); return
-    if data == "my_level":
-        await show_level(q, tg_id); return
-
-    if data == "tip_of_day":
-        await q.edit_message_text(f"💡 {get_tip_of_day()
+        await q.edit_message_text("🏋️ Тренировка:", reply_m
